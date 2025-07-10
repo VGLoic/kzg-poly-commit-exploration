@@ -13,6 +13,12 @@ The codebase will be written in Rust. As I'm still learning things about Rust, t
 
 Need to start somewhere.
 
+## Repository setup
+
+Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
+
+A single executable is present, use `cargo run` to run it.
+
 ## Resources
 
 - [Applied ZK learning group of 0xParc](https://learn.0xparc.org/materials/circom/learning-group-1/intro-zkp/),
