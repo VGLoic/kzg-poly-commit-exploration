@@ -32,4 +32,10 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - run: cargo build --verbose
+    clippy:
+        runs-on: ubuntu-latest
+        name: Check lint
+        steps:
+            - uses: actions/checkout@v4
+            - run: cargo clippy -- -Dwarnings
     
