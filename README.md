@@ -1,6 +1,6 @@
 # KZG polynomial commitments exploration
 
-This repository is an exploration to KZ (Kate, Zaverucha and Goldberg) polynomial commitments. The goal is to explore the topic and document every progress in this README. The target would be to have a CLI that allows to handle the different steps in order to perform a polynomial commitment.
+This repository is an exploration to KZG (Kate, Zaverucha and Goldberg) polynomial commitments. The goal is to explore the topic and document every progress in this README. The target would be to have a CLI that allows to handle the different steps in order to perform a polynomial commitment.
 
 The codebase will be written in Rust. As I'm still learning things about Rust, this README will also contain some documentations about my learning in Rust.
 
