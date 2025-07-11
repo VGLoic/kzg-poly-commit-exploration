@@ -17,7 +17,7 @@ Need to start somewhere.
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
 
-A single executable is present, use `cargo run` to run it.
+A single executable as a CLI is present, use `cargo run -- --help` to show the available commands.
 
 ## Resources
 
