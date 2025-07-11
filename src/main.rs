@@ -39,7 +39,6 @@ fn main() {
         None => default_log_level,
     };
 
-
     if let Err(err) = simple_logger::init_with_level(log_level) {
         panic!("Failed to initialize logging, got error: {err}");
     }
