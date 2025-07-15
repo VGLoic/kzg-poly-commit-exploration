@@ -7,11 +7,37 @@ The codebase will be written in Rust. As I'm still learning things about Rust, t
 ## Starting point
 
 - I have a good understanding of modular arithmetics but I am not a mathematician. I understand elliptic curve basic theory but I never got my hands dirty on it yet (theoretically or in software),
-- I have followed the lectures of the [Applied ZK learning group of 0xParc](https://learn.0xparc.org/materials/circom/learning-group-1/intro-zkp/).
+- I have followed the lectures of the [Applied ZK learning group of 0xParc](https://learn.0xparc.org/materials/circom/learning-group-1/intro-zkp/),
+- I have read the [article of Dankrad Feist about KZG polynomial commitments](https://dankradfeist.de/ethereum/2020/06/16/kate-polynomial-commitments.html).
 
 ## Exploration steps
 
-Need to start somewhere.
+I like my [latest read from Dankrad Feist](https://dankradfeist.de/ethereum/2020/06/16/kate-polynomial-commitments.html) so I will follow up a bit the steps in the article.
+
+### Dive into the groups
+
+A good first achievement would be to have a command in order to run a trusted setup and generate the associated artifacts.
+
+For my trusted setup I first need to have a prime field, two elliptic curves and a third group where I have a bilinear map as a valid pairing.
+
+I don't really know what to take, I will do a few additional reads:
+- [Exploring Elliptic Curve Pairings by Vitalik Buterin](https://vitalik.eth.limo/general/2017/01/14/exploring_ecp.html),
+- [A (relatively easy to understand) primer on elliptic curve cryptography)](https://blog.cloudflare.com/a-relatively-easy-to-understand-primer-on-elliptic-curve-cryptography/), found from the above post,
+- [BLS12-381 for the rest of us (revised version)](https://eth2book.info/latest/part2/building_blocks/bls12-381/) from Ben Edgington, I found this after a Google search about which elliptic curves I could use.
+
+The two first resources were good reads, I am still in the middle of reading the third one which explains a huge amount of things. There are actually a good number of potential candidates for the curves.
+However, the family of BLS curves, and in particular the **BLS12-381** is a good construction for the whole package:
+- the first elliptic curve group is defined by the equation `y^2 = x^3 + 4` over the field `F_q` with `q = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab` (in hexadecimal). The size of `q` is `381 bits`, hence the `381` in the name of the curve,
+- the second elliptic curve group is actually derived once we said we wanted a pairing, i.e. we needed another group with the same order than the first one. Actually, by `extending` the `F_q` field `12` times, i.e. `F_q^12` and plugging it with the same elliptic curve equation, we can find the subgroup with the target order. The `12`, called the `embedding degree` of the curve, is the `12` in the name of the curve. By luck, a `twist` can be built, introducing a mapping from `F_q_^2` with `y^2 = x^3 + 4(1 + i)` to our elliptic curve over `F_q^12`, it should allow to work with way easier coordinates. Therefore, the second group can either be the first elliptic curve over `F_q^12` or the second one over `F_q^2`, in the literature I found the `F_q_12` version but in implementation, it is likely I meet the `F_q_2` version,
+- the third group, target of the pairing will actually be a subgroup of `F_q^12`. I have not yet seen how to construct the pairing so more on this later,
+- I have not found the exact definition of the pairing, it can be found in [this course](https://static1.squarespace.com/static/5fdbb09f31d71c1227082339/t/5ff394720493bd28278889c6/1609798774687/PairingsForBeginners.pdf), we'll treat it as an unknown for now and we'll see if we need it when implementing things.
+
+This whole part is way heavier than what I described here, I tried my best to resume it to the absolute minimum, refer to the Ben Edington's article to dig on this, it is very good.
+
+In terms of implementations, the book of Ben Edington refers to multiple resources, for now I am still exploring a bit the ones that may be compatible for Rust:
+- [blst](https://crates.io/crates/blst): provides a simple API for BLS signature, not sure it could handle my simple trusted setup plan,
+- [constantine](https://github.com/mratsim/constantine): not sure yet how to use this one,
+- [blsh](https://github.com/one-hundred-proof/blsh): seems promising to play around.
 
 ## Repository setup
 
@@ -21,5 +47,10 @@ A single executable as a CLI is present, use `cargo run -- --help` to show the a
 
 ## Resources
 
-- [Applied ZK learning group of 0xParc](https://learn.0xparc.org/materials/circom/learning-group-1/intro-zkp/),
-- [Article of Dankrad Feist about KZG polynomial commitments](https://dankradfeist.de/ethereum/2020/06/16/kate-polynomial-commitments.html).
+- [Applied ZK learning group of 0xParc](https://learn.0xparc.org/materials/circom/learning-group-1/intro-zkp/): a set of videos going through Circom and a bit of applied cryptography,
+- [Article of Dankrad Feist about KZG polynomial commitments](https://dankradfeist.de/ethereum/2020/06/16/kate-polynomial-commitments.html): article for high level explanation of the KZG polynomial commitment,
+- [Exploring Elliptic Curve Pairings by Vitalik Buterin](https://vitalik.eth.limo/general/2017/01/14/exploring_ecp.html): nice overview of elliptic curve and pairings, dive a little bit in the math,
+- [A (relatively easy to understand) primer on elliptic curve cryptography)](https://blog.cloudflare.com/a-relatively-easy-to-understand-primer-on-elliptic-curve-cryptography/): nice introduction to elliptic curve,
+- [BLS12-381 for the rest of us (revised version)](https://eth2book.info/latest/part2/building_blocks/bls12-381/): in depth documentation about BLS12-381, its definition but also how to use it,
+- [Pairings for beginners](https://static1.squarespace.com/static/5fdbb09f31d71c1227082339/t/5ff394720493bd28278889c6/1609798774687/PairingsForBeginners.pdf): serious mathematical way to elliptic curves and pairings.
+
