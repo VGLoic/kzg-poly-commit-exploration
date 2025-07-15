@@ -32,7 +32,7 @@ However, the family of BLS curves, and in particular the **BLS12-381** is a good
 - the third group, target of the pairing will actually be a subgroup of `F_q^12`. I have not yet seen how to construct the pairing so more on this later,
 - I have not found the exact definition of the pairing, it can be found in [this course](https://static1.squarespace.com/static/5fdbb09f31d71c1227082339/t/5ff394720493bd28278889c6/1609798774687/PairingsForBeginners.pdf), we'll treat it as an unknown for now and we'll see if we need it when implementing things.
 
-This whole part is way heavier than what I described here, I tried my best to resume it to the absolute minimum, refer to the Ben Edington's article to dig on this, it is very good.
+This whole part is way heavier than what I described here, I tried my best to summarize it to the absolute minimum, refer to the Ben Edington's article to dig on this, it is very good.
 
 In terms of implementations, the book of Ben Edington refers to multiple resources, for now I am still exploring a bit the ones that may be compatible for Rust:
 - [blst](https://crates.io/crates/blst): provides a simple API for BLS signature, not sure it could handle my simple trusted setup plan,
