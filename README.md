@@ -37,7 +37,8 @@ This whole part is way heavier than what I described here, I tried my best to su
 In terms of implementations, the book of Ben Edington refers to multiple resources, for now I am still exploring a bit the ones that may be compatible for Rust:
 - [blst](https://crates.io/crates/blst): provides a simple API for BLS signature, not sure it could handle my simple trusted setup plan,
 - [constantine](https://github.com/mratsim/constantine): not sure yet how to use this one,
-- [blsh](https://github.com/one-hundred-proof/blsh): seems promising to play around.
+- [blsh](https://github.com/one-hundred-proof/blsh): seems promising to play around,
+- [algebra](https://github.com/arkworks-rs/algebra): I discovered it a bit later, I have not tried it yet.
 
 #### Library choice
 
