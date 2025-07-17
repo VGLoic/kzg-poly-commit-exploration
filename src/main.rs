@@ -55,7 +55,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn operations() {
+    fn test_point_addition_and_scalar_multiplication() {
         unsafe {
             let g1 = blst::blst_p1_generator();
 
@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn compressions() {
+    fn test_compression_and_serialization() {
         unsafe {
             let g1 = blst::blst_p1_generator();
 
