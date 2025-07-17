@@ -39,6 +39,101 @@ In terms of implementations, the book of Ben Edington refers to multiple resourc
 - [constantine](https://github.com/mratsim/constantine): not sure yet how to use this one,
 - [blsh](https://github.com/one-hundred-proof/blsh): seems promising to play around.
 
+#### Library choice
+
+I finally dig in `blst`, I was also looking at `blsh` codebase to see how it was using the `blst` library.
+
+The library is mostly made for dealing with BLS signatures but still exposes low levels utilities in order to work with the elliptic curve groups and the finite field groups. 
+
+It took me some time to have something working as the library does not have a very good documentation and my understanding of the different formats was not on point. I had to read a good amount of times the serialization conventions from [ZCash](https://github.com/zcash/librustzcash/blob/6e0364cd42a2b3d2b958a54771ef51a8db79dd29/pairing/src/bls12_381/README.md#serialization) and [Ben Edington's book](https://eth2book.info/capella/part2/building_blocks/bls12-381/#point-compression) in order to understand the compression and serialization utilities from the library. The [explanation](https://eth2book.info/capella/part2/building_blocks/bls12-381/#coordinate-systems) for the various coordinate systems are also a must read.
+
+I got what I needed in two tests:
+- one for operations where I test addition of two points and addition of one point `n` times,
+- one for testing compression and serialization.
+
+```rust
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn operations() {
+        unsafe {
+            let g1 = blst::blst_p1_generator();
+
+            let mut p1_via_addition = blst::blst_p1::default();
+            blst::blst_p1_add_or_double(&mut p1_via_addition, g1, g1);
+
+            let mut p1_via_multiplication = blst::blst_p1::default();
+            blst::blst_p1_mult(
+                &mut p1_via_multiplication,
+                g1,
+                2_u8.to_be_bytes().as_ptr(),
+                255,
+            );
+
+            assert!(blst::blst_p1_in_g1(g1), "g1 must be in the first group");
+            assert_eq!(
+                p1_via_multiplication, p1_via_addition,
+                "results must be the same via multiplication and via addition"
+            );
+            assert_ne!(
+                p1_via_multiplication, *g1,
+                "result must be different than g1"
+            );
+            assert!(
+                blst::blst_p1_in_g1(&p1_via_multiplication),
+                "result must be in first group"
+            );
+        }
+    }
+
+    #[test]
+    fn compressions() {
+        unsafe {
+            let g1 = blst::blst_p1_generator();
+
+            let mut p1 = blst::blst_p1::default();
+            blst::blst_p1_add_or_double(&mut p1, g1, g1);
+
+            let mut compressed_p1 = [0; 48];
+            blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &p1);
+            let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
+            match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr()) {
+                blst::BLST_ERROR::BLST_SUCCESS => {}
+                other => {
+                    println!("Got error while uncompressing: {other:?}");
+                    panic!("Fail to uncompress")
+                }
+            };
+            let mut uncompressed_p1 = blst::blst_p1::default();
+            blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
+            assert_eq!(
+                uncompressed_p1, p1,
+                "result after uncompression must be equal to p1"
+            );
+
+            let mut serialized_p1 = [0; 96];
+            blst::blst_p1_serialize(serialized_p1.as_mut_ptr(), &p1);
+            let mut deserialized_p1_affine = blst::blst_p1_affine::default();
+            match blst::blst_p1_deserialize(&mut deserialized_p1_affine, serialized_p1.as_ptr()) {
+                blst::BLST_ERROR::BLST_SUCCESS => {}
+                other => {
+                    println!("Got error while deserializing: {other:?}",);
+                    panic!("Fail to deserialize")
+                }
+            };
+
+            let mut deserialized_p1 = blst::blst_p1::default();
+            blst::blst_p1_from_affine(&mut deserialized_p1, &deserialized_p1_affine);
+            assert_eq!(
+                deserialized_p1, p1,
+                "result after deserialization must be equal to p1"
+            );
+        }
+    }
+}
+
+```
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
