@@ -64,11 +64,12 @@ mod tests {
             blst::blst_p1_add_or_double(&mut p1_via_addition, g1, g1);
 
             let mut p1_via_multiplication = blst::blst_p1::default();
+            let scalar_as_bytes = 2_u8.to_be_bytes();
             blst::blst_p1_mult(
                 &mut p1_via_multiplication,
                 g1,
-                2_u8.to_be_bytes().as_ptr(),
-                255,
+                scalar_as_bytes.as_ptr(),
+                scalar_as_bytes.len() * 8,
             );
 
             assert!(blst::blst_p1_in_g1(g1), "g1 must be in the first group");
@@ -132,7 +133,6 @@ mod tests {
         }
     }
 }
-
 ```
 
 ## Repository setup
