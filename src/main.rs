@@ -54,6 +54,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use num_bigint::BigUint;
     use rand::RngCore;
 
     #[test]
@@ -180,15 +181,17 @@ mod tests {
 
     #[test]
     fn test_commitment_for_polynomial_degree_one() {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        rand::rng().fill_bytes(&mut s_bytes);
+        // let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
+        // rand::rng().fill_bytes(&mut s_bytes);
+        let mut s_bytes = [0u8; 48]; // as le
+        s_bytes[0] = 3;
         let mut s = blst::blst_fp::default();
         unsafe {
             blst::blst_fp_from_bendian(&mut s, s_bytes.as_ptr());
         };
         let mut s_as_scalar = blst::blst_scalar::default();
         unsafe {
-            blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
+            blst::blst_scalar_from_le_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
         };
 
         let g1 = unsafe { *blst::blst_p1_generator() };
@@ -231,7 +234,7 @@ mod tests {
         };
         let mut commitment = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_add(&mut commitment, &constant_part, &order_one_part);
+            blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
         };
 
         println!("Commitment: {commitment:?}");
@@ -266,79 +269,179 @@ mod tests {
         let rhs = bilinear_map(&commitment_part, &g2);
 
         assert_eq!(lhs, rhs);
-
-        assert!(false, "This is an expected failure");
     }
 
-    // #[test]
-    // fn test_commitment_for_polynomial_degree_one() {
-    //     let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-    //     rand::rng().fill_bytes(&mut s_bytes);
-    //     let mut s = blst::blst_fp::default();
-    //     unsafe {
-    //         blst::blst_fp_from_bendian(&mut s, s_bytes.as_ptr());
-    //     };
-    //     let mut s_as_scalar = blst::blst_scalar::default();
-    //     unsafe {
-    //         blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
-    //     };
+    #[test]
+    fn test_commitment_for_polynomial_degree_two() {
+        // let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
+        // rand::rng().fill_bytes(&mut s_bytes);
+        // let s_as_u8= 3u8;
+        // let s_bytes = s_as_u8.to_le_bytes();
+        let mut s_bytes = [0u8; 48]; // as LE
+        s_bytes[0] = 3;
+        let mut s = blst::blst_fp::default();
+        unsafe {
+            blst::blst_fp_from_lendian(&mut s, s_bytes.as_ptr());
+        };
+        let s_as_buint = BigUint::from_bytes_le(&s_bytes);
 
-    //     let g1 = unsafe { *blst::blst_p1_generator() };
-    //     let g2 = unsafe { *blst::blst_p2_generator() };
+        // REMIND ME TO REMOVE
+        let mut recovered_s_as_be = [0u8; 48];
+        unsafe {
+            blst::blst_bendian_from_fp(recovered_s_as_be.as_mut_ptr(), &s);
+        };
+        assert_eq!(BigUint::from_bytes_be(&recovered_s_as_be), s_as_buint, "S is properly recovered");
 
-    //     let mut s_g1 = blst::blst_p1::default();
-    //     unsafe {
-    //         blst::blst_p1_mult(
-    //             &mut s_g1,
-    //             blst::blst_p1_generator(),
-    //             s_as_scalar.b.as_ptr(),
-    //             48,
-    //         );
-    //     };
-    //     let mut s_g2 = blst::blst_p2::default();
-    //     unsafe {
-    //         blst::blst_p2_mult(
-    //             &mut s_g2,
-    //             blst::blst_p2_generator(),
-    //             s_as_scalar.b.as_ptr(),
-    //             48,
-    //         );
-    //     };
+        let mut s_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_le_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
+        };
 
-    //     let mut s_squared = blst::blst_fp::default();
-    //     unsafe {
-    //         blst::blst_fp_mul(&mut s_squared, &s, &s);
-    //     };
-    //     let mut s_squared_as_be = [0; 48];
-    //     unsafe {
-    //         blst::blst_bendian_from_fp(s_squared_as_be.as_mut_ptr(), &s_squared);
-    //     }
-    //     let mut s_squared_as_scalar = blst::blst_scalar::default();
-    //     unsafe {
-    //         blst::blst_scalar_from_bendian(&mut s_squared_as_scalar, s_squared_as_be.as_ptr());
-    //     }
+        let g1 = unsafe { *blst::blst_p1_generator() };
+        let g2 = unsafe { *blst::blst_p2_generator() };
 
-    //     let mut s_squared_g1 = blst::blst_p1::default();
-    //     unsafe {
-    //         blst::blst_p1_mult(
-    //             &mut s_squared_g1,
-    //             blst::blst_p1_generator(),
-    //             s_squared_as_scalar.b.as_ptr(),
-    //             48,
-    //         )
-    //     };
-    //     let mut s_squared_g2 = blst::blst_p2::default();
-    //     unsafe {
-    //         blst::blst_p2_mult(
-    //             &mut s_squared_g2,
-    //             blst::blst_p2_generator(),
-    //             s_squared_as_scalar.b.as_ptr(),
-    //             48,
-    //         )
-    //     };
+        let mut s_g1 = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut s_g1,
+                blst::blst_p1_generator(),
+                s_as_scalar.b.as_ptr(),
+                s_as_scalar.b.len() * 8,
+            );
+        };
+        let mut s_g2 = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(
+                &mut s_g2,
+                blst::blst_p2_generator(),
+                s_as_scalar.b.as_ptr(),
+                s_as_scalar.b.len() * 8,
+            );
+        };
 
-    //     println!(
-    //         "G1: {g1:?}\ns * G1: {s_g1:?}\ns^2 * G1: {s_squared_g1:?}\n\nG2: {g2:?}\ns * G2: {s_g2:?}\ns^2 * G2: {s_squared_g2:?}"
-    //     );
-    // }
+        let mut s_squared_as_le = [0; 48];
+        s_squared_as_le[0] = 9;
+        let mut s_squared = blst::blst_fp::default();
+        unsafe {
+            blst::blst_fp_from_lendian(&mut s_squared, s_squared_as_le.as_ptr());
+        };
+        let mut s_squared_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_le_bytes(&mut s_squared_as_scalar, s_squared_as_le.as_ptr(), s_squared_as_le.len());
+        };
+
+        // let mut s_squared = blst::blst_fp::default();
+        // unsafe {
+        //     blst::blst_fp_mul(&mut s_squared, &s, &s);
+        // };
+        // let mut s_squared_as_le = [0; 48];
+        // unsafe {
+        //     blst::blst_bendian_from_fp(s_squared_as_le.as_mut_ptr(), &s_squared);
+        // }
+        // let mut s_squared_as_scalar = blst::blst_scalar::default();
+        // unsafe {
+        //     blst::blst_scalar_from_bendian(&mut s_squared_as_scalar, s_squared_as_le.as_ptr());
+        // }
+
+        println!("S^2 BYTES: {s_squared_as_le:?}\nS^2 AS FP: {s_squared:?}\nS^2 AS SCALAR: {s_squared_as_scalar:?}");
+
+        let mut s_squared_g1 = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut s_squared_g1,
+                blst::blst_p1_generator(),
+                s_squared_as_scalar.b.as_ptr(),
+                s_squared_as_scalar.b.len() * 8
+            )
+        };
+        let mut s_squared_g2 = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(
+                &mut s_squared_g2,
+                blst::blst_p2_generator(),
+                s_squared_as_scalar.b.as_ptr(),
+                s_squared_as_scalar.b.len() * 8
+            )
+        };
+
+        // println!(
+        //     "G1: {g1:?}\ns * G1: {s_g1:?}\ns^2 * G1: {s_squared_g1:?}\n\nG2: {g2:?}\ns * G2: {s_g2:?}\ns^2 * G2: {s_squared_g2:?}"
+        // );
+
+        // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
+        let mut constant_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut constant_part,
+                blst::blst_p1_generator(),
+                4u8.to_be_bytes().as_ptr(),
+                255,
+            );
+        };
+        let mut order_one_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(&mut order_one_part, &s_g1, 3u8.to_be_bytes().as_ptr(), 255);
+        };
+        let mut order_two_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(&mut order_two_part, &s_squared_g1, 2u8.to_be_bytes().as_ptr(), 255);
+        };
+        let mut commitment_constant_and_order_one = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_add_or_double(&mut commitment_constant_and_order_one, &constant_part, &order_one_part);
+        };
+        let mut commitment = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_add_or_double(&mut commitment, &commitment_constant_and_order_one, &order_two_part);
+        };
+
+        println!("Commitment: {commitment:?}");
+
+        // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
+        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
+        let mut q_at_s_constant_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut q_at_s_constant_part,
+                blst::blst_p1_generator(),
+                7u8.to_be_bytes().as_ptr(),
+                255,
+            );
+        };
+        let mut q_at_s_order_one_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut q_at_s_order_one_part,
+                &s_g1,
+                2u8.to_be_bytes().as_ptr(),
+                255,
+            );
+        };
+        let mut q_at_s = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_order_one_part);
+        }
+
+        let mut z = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(&mut z, blst::blst_p2_generator(), 2u8.to_be_bytes().as_ptr(), 255);
+        }
+        let divider = blst_p2_sub(&s_g2, &z);
+        let lhs = bilinear_map(&q_at_s, &divider);
+
+        let mut y = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut y,
+                blst::blst_p1_generator(),
+                18u8.to_be_bytes().as_ptr(),
+                255,
+            );
+        };
+        let commitment_part = blst_p1_sub(&commitment, &y);
+        let g2 = unsafe { *blst::blst_p2_generator() };
+        let rhs = bilinear_map(&commitment_part, &g2);
+
+        assert_eq!(lhs, rhs);
+    }
 }
