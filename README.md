@@ -146,7 +146,7 @@ I wanted to write my trusted setup script but I liked my first approach with tes
 6. compute the remaining quantities and the two pairings,
 7. compare the pairings, they must be equal.
 
-Not gonna lie, it took me some time to make it work. I discovered a lot about bytes in general, in particular the difference between [low endian and big endian](https://www.techtarget.com/searchnetworking/definition/big-endian-and-little-endian). There are still some things that are not perfectly clear for me, like the `scalar` type of the `blst` crate, I will try to understand it a bit better. However, it allowed me to illustrate concretly the KZG polynomial commitment process and I'm quite happy to have this working.
+Not gonna lie, it took me some time to make it work. I discovered a lot about bytes in general, in particular the difference between [little endian and big endian](https://www.techtarget.com/searchnetworking/definition/big-endian-and-little-endian). There are still some things that are not perfectly clear for me, like the `scalar` type of the `blst` crate, I will try to understand it a bit better. However, it allowed me to illustrate concretely the KZG polynomial commitment process and I'm quite happy to have this working.
 
 Here is the test made for the order one polynomial:
 ```rust
