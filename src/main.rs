@@ -276,10 +276,6 @@ mod tests {
     fn test_commitment_for_polynomial_degree_two() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let mut s = blst::blst_fp::default();
-        unsafe {
-            blst::blst_fp_from_lendian(&mut s, s_bytes.as_ptr());
-        };
         let s_as_buint = BigUint::from_bytes_be(&s_bytes);
 
         let mut s_as_scalar = blst::blst_scalar::default();
@@ -350,7 +346,7 @@ mod tests {
         let a1 = blst_scalar_from_u8(3);
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len());
+            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
         };
         let a2 = blst_scalar_from_u8(2);
         let mut order_two_part = blst::blst_p1::default();
@@ -359,7 +355,7 @@ mod tests {
                 &mut order_two_part,
                 &s_squared_g1,
                 a2.b.as_ptr(),
-                a2.b.len(),
+                a2.b.len() * 8,
             );
         };
         let mut commitment = blst::blst_p1::default();
