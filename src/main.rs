@@ -179,6 +179,16 @@ mod tests {
         out
     }
 
+    fn blst_scalar_from_u8(a: u8) -> blst::blst_scalar {
+        let mut le_bytes = [0; 48];
+        le_bytes[0] = a;
+        let mut scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_le_bytes(&mut scalar, le_bytes.as_ptr(), le_bytes.len())
+        };
+        scalar
+    }
+ 
     #[test]
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
@@ -197,7 +207,7 @@ mod tests {
                 &mut s_g1,
                 blst::blst_p1_generator(),
                 s_as_scalar.b.as_ptr(),
-                48,
+                s_as_scalar.b.len() * 8,
             );
         };
         let mut s_g2 = blst::blst_p2::default();
@@ -206,39 +216,29 @@ mod tests {
                 &mut s_g2,
                 blst::blst_p2_generator(),
                 s_as_scalar.b.as_ptr(),
-                48,
+                s_as_scalar.b.len() * 8,
             );
         };
 
         println!("G1: {g1:?}\ns * G1: {s_g1:?}\n\nG2: {g2:?}\ns * G2: {s_g2:?}");
 
         // Polynomial to commit is `p(x) = 5x + 10
-        // a_1 = 5, a_0 = 10`
-        let mut a_0_as_le_bytes = [0u8; 48];
-        a_0_as_le_bytes[0] = 10;
-        let mut a_0_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_lendian(&mut a_0_as_scalar, a_0_as_le_bytes.as_ptr());
-        }
+        // a1 = 5, a0 = 10`
+        let a0 = blst_scalar_from_u8(10);
         let mut constant_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut constant_part,
                 blst::blst_p1_generator(),
-                a_0_as_scalar.b.as_ptr(),
-                a_0_as_scalar.b.len() * 8,
+                a0.b.as_ptr(),
+                a0.b.len() * 8,
             );
         };
 
-        let mut a_1_as_le_bytes = [0u8; 48];
-        a_1_as_le_bytes[0] = 5;
-        let mut a_1_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_lendian(&mut a_1_as_scalar, a_1_as_le_bytes.as_ptr());
-        };
+        let a1 = blst_scalar_from_u8(5);
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, a_1_as_scalar.b.as_ptr(), a_1_as_scalar.b.len() * 8);
+            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
         };
         let mut commitment = blst::blst_p1::default();
         unsafe {
@@ -247,32 +247,22 @@ mod tests {
 
         // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
-        let mut q_value_as_le_bytes = [0; 48];
-        q_value_as_le_bytes[0] = 5;
-        let mut q_value_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_lendian(&mut q_value_as_scalar, q_value_as_le_bytes.as_ptr());
-        }
+        let q_as_scalar = blst_scalar_from_u8(5);
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut q_at_s,
                 blst::blst_p1_generator(),
-                q_value_as_scalar.b.as_ptr(),
-                q_value_as_scalar.b.len() * 8,
+                q_as_scalar.b.as_ptr(),
+                q_as_scalar.b.len() * 8,
             );
         };
 
         let z = unsafe { *blst::blst_p2_generator() };
         let divider = blst_p2_sub(&s_g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
-
-        let mut y_as_le_bytes = [0; 48];
-        y_as_le_bytes[0] = 15;
-        let mut y_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_lendian(&mut y_as_scalar, y_as_le_bytes.as_ptr());
-        }
+        
+        let y_as_scalar = blst_scalar_from_u8(15);
         let mut y = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
