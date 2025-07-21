@@ -135,6 +135,107 @@ mod tests {
 }
 ```
 
+#### Digging until I got tests for polynomial commitments
+
+I wanted to write my trusted setup script but I liked my first approach with test. So I took the time to write two more tests for polynomial commitments without smart things and with simple polynomials. I did one test for order 1 polynomial, the other is for order 2 polynomial. The approach is the same in both tests:
+1. start by generating a secret,
+2. the secret is used in order to compute the multiple of the generators of the first and second group,
+3. use these quantities in order to compute the polynomial commitment,
+4. choose a point at which we want to open the polynomial and derive the quotient polynomial manually (non automated),
+5. evaluate the quotient polynomial at the secret using the artifacts of step 2,
+6. compute the remaining quantities and the two pairings,
+7. compare the pairings, they must be equal.
+
+Not gonna lie, it took me some time to make it work. I discovered a lot about bytes in general, in particular the difference between [little endian and big endian](https://www.techtarget.com/searchnetworking/definition/big-endian-and-little-endian). There are still some things that are not perfectly clear for me, like the `scalar` type of the `blst` crate, I will try to understand it a bit better. However, it allowed me to illustrate concretely the KZG polynomial commitment process and I'm quite happy to have this working.
+
+Here is the test made for the order one polynomial:
+```rust
+#[test]
+fn test_commitment_for_polynomial_degree_one() {
+    let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
+    rand::rng().fill_bytes(&mut s_bytes);
+    let mut s_as_scalar = blst::blst_scalar::default();
+    unsafe {
+        blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
+    };
+
+    let mut s_g1 = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_mult(
+            &mut s_g1,
+            blst::blst_p1_generator(),
+            s_as_scalar.b.as_ptr(),
+            s_as_scalar.b.len() * 8,
+        );
+    };
+    let mut s_g2 = blst::blst_p2::default();
+    unsafe {
+        blst::blst_p2_mult(
+            &mut s_g2,
+            blst::blst_p2_generator(),
+            s_as_scalar.b.as_ptr(),
+            s_as_scalar.b.len() * 8,
+        );
+    };
+
+    // Polynomial to commit is `p(x) = 5x + 10
+    // a1 = 5, a0 = 10`
+    let a0 = blst_scalar_from_u8(10);
+    let mut constant_part = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_mult(
+            &mut constant_part,
+            blst::blst_p1_generator(),
+            a0.b.as_ptr(),
+            a0.b.len() * 8,
+        );
+    };
+
+    let a1 = blst_scalar_from_u8(5);
+    let mut order_one_part = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
+    };
+    let mut commitment = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
+    };
+
+    // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
+    // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
+    let q_as_scalar = blst_scalar_from_u8(5);
+    let mut q_at_s = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_mult(
+            &mut q_at_s,
+            blst::blst_p1_generator(),
+            q_as_scalar.b.as_ptr(),
+            q_as_scalar.b.len() * 8,
+        );
+    };
+
+    let z = unsafe { *blst::blst_p2_generator() };
+    let divider = blst_p2_sub(&s_g2, &z);
+    let lhs = bilinear_map(&q_at_s, &divider);
+
+    let y_as_scalar = blst_scalar_from_u8(15);
+    let mut y = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_mult(
+            &mut y,
+            blst::blst_p1_generator(),
+            y_as_scalar.b.as_ptr(),
+            y_as_scalar.b.len() * 8,
+        );
+    };
+    let commitment_part = blst_p1_sub(&commitment, &y);
+    let g2 = unsafe { *blst::blst_p2_generator() };
+    let rhs = bilinear_map(&commitment_part, &g2);
+
+    assert_eq!(lhs, rhs);
+}
+```
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
