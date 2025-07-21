@@ -262,7 +262,7 @@ mod tests {
                 &mut y,
                 blst::blst_p1_generator(),
                 y_as_scalar.b.as_ptr(),
-                y_as_scalar.b.len(),
+                y_as_scalar.b.len() * 8,
             );
         };
         let commitment_part = blst_p1_sub(&commitment, &y);
