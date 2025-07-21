@@ -181,17 +181,11 @@ mod tests {
 
     #[test]
     fn test_commitment_for_polynomial_degree_one() {
-        // let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        // rand::rng().fill_bytes(&mut s_bytes);
-        let mut s_bytes = [0u8; 48]; // as le
-        s_bytes[0] = 3;
-        let mut s = blst::blst_fp::default();
-        unsafe {
-            blst::blst_fp_from_bendian(&mut s, s_bytes.as_ptr());
-        };
+        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
+        rand::rng().fill_bytes(&mut s_bytes);
         let mut s_as_scalar = blst::blst_scalar::default();
         unsafe {
-            blst::blst_scalar_from_le_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
+            blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
         };
 
         let g1 = unsafe { *blst::blst_p1_generator() };
@@ -218,36 +212,54 @@ mod tests {
 
         println!("G1: {g1:?}\ns * G1: {s_g1:?}\n\nG2: {g2:?}\ns * G2: {s_g2:?}");
 
-        // Polynomial to commit is `p(x) = 5x + 10`
+        // Polynomial to commit is `p(x) = 5x + 10
+        // a_1 = 5, a_0 = 10`
+        let mut a_0_as_le_bytes = [0u8; 48];
+        a_0_as_le_bytes[0] = 10;
+        let mut a_0_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_lendian(&mut a_0_as_scalar, a_0_as_le_bytes.as_ptr());
+        }
         let mut constant_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut constant_part,
                 blst::blst_p1_generator(),
-                10u8.to_be_bytes().as_ptr(),
-                255,
+                a_0_as_scalar.b.as_ptr(),
+                a_0_as_scalar.b.len() * 8,
             );
+        };
+
+        let mut a_1_as_le_bytes = [0u8; 48];
+        a_1_as_le_bytes[0] = 5;
+        let mut a_1_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_lendian(&mut a_1_as_scalar, a_1_as_le_bytes.as_ptr());
         };
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, 5u8.to_be_bytes().as_ptr(), 255);
+            blst::blst_p1_mult(&mut order_one_part, &s_g1, a_1_as_scalar.b.as_ptr(), a_1_as_scalar.b.len() * 8);
         };
         let mut commitment = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
         };
 
-        println!("Commitment: {commitment:?}");
-
         // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
+        let mut q_value_as_le_bytes = [0; 48];
+        q_value_as_le_bytes[0] = 5;
+        let mut q_value_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_lendian(&mut q_value_as_scalar, q_value_as_le_bytes.as_ptr());
+        }
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut q_at_s,
                 blst::blst_p1_generator(),
-                5u8.to_be_bytes().as_ptr(),
-                8,
+                q_value_as_scalar.b.as_ptr(),
+                q_value_as_scalar.b.len() * 8,
             );
         };
 
@@ -255,13 +267,19 @@ mod tests {
         let divider = blst_p2_sub(&s_g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
+        let mut y_as_le_bytes = [0; 48];
+        y_as_le_bytes[0] = 15;
+        let mut y_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_lendian(&mut y_as_scalar, y_as_le_bytes.as_ptr());
+        }
         let mut y = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut y,
                 blst::blst_p1_generator(),
-                15u8.to_be_bytes().as_ptr(),
-                8,
+                y_as_scalar.b.as_ptr(),
+                y_as_scalar.b.len(),
             );
         };
         let commitment_part = blst_p1_sub(&commitment, &y);
@@ -296,9 +314,6 @@ mod tests {
         unsafe {
             blst::blst_scalar_from_le_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
         };
-
-        let g1 = unsafe { *blst::blst_p1_generator() };
-        let g2 = unsafe { *blst::blst_p2_generator() };
 
         let mut s_g1 = blst::blst_p1::default();
         unsafe {
