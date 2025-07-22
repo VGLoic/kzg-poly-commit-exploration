@@ -191,7 +191,7 @@ impl<'de> Deserialize<'de> for SetupArtifact {
             }
 
             let mut compressed_p1 = [0u8; 48];
-            compressed_p1.copy_from_slice(&v[..48]);
+            compressed_p1.copy_from_slice(&v);
             let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
             unsafe {
                 match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr())
@@ -218,7 +218,7 @@ impl<'de> Deserialize<'de> for SetupArtifact {
             }
 
             let mut compressed_p2 = [0u8; 96];
-            compressed_p2.copy_from_slice(&v[..96]);
+            compressed_p2.copy_from_slice(&v);
             let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
             unsafe {
                 match blst::blst_p2_uncompress(&mut uncompressed_p2_affine, compressed_p2.as_ptr())
@@ -254,7 +254,7 @@ impl<'de> Deserialize<'de> for SetupArtifact {
 
                 let raw_g2: Vec<u8> = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
                 let g2 = vec_to_blst_p2(raw_g2).map_err(de::Error::custom)?;
 
                 Ok(SetupArtifact { g1, g2 })
