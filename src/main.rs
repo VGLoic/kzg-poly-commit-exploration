@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use num_bigint::BigUint;
 use rand::RngCore;
 use std::{fs, io::Write, str::FromStr};
+use thiserror::Error;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -49,45 +50,72 @@ fn main() {
     }
 
     match &cli.command {
-        Some(Commands::TrustedSetup {}) => {
-            log::info!("Starting the trusted setup ceremony");
-
-            let artifacts_folder_path = "./artifacts";
-            let setup_artifacts_path = format!("{artifacts_folder_path}/setup.txt");
-            if !fs::exists(artifacts_folder_path).unwrap() {
-                fs::create_dir(artifacts_folder_path).unwrap();
+        Some(cmd) => {
+            if let Err(e) = cmd.run() {
+                panic!("Command execution failed\nError: {e}")
             }
-            if fs::exists(&setup_artifacts_path).unwrap() {
-                fs::remove_file(&setup_artifacts_path).unwrap();
-            }
-            let mut file = fs::File::create(&setup_artifacts_path).unwrap();
-
-            let mut s_be_bytes = [0; 48];
-            rand::rng().fill_bytes(&mut s_be_bytes);
-            for artifact in setup_artifacts_generator(s_be_bytes).take(9) {
-                let mut compressed_p1 = [0; 48];
-                unsafe {
-                    blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &artifact.g1);
-                };
-
-                let mut compressed_p2 = [0; 96];
-                unsafe {
-                    blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &artifact.g2);
-                };
-
-                file.write_all(&compressed_p1).unwrap();
-                file.write_all(&compressed_p2).unwrap();
-            }
-
-            log::info!(
-                "Trusted setup ceremony successfully perfomed. Artifacts have been written in \"{setup_artifacts_path}\""
-            )
-        }
-        Some(Commands::HelloWorld {}) => {
-            log::info!("Hello, world!");
         }
         None => {
             log::warn!("No command has been input")
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+enum CliError {
+    #[error("Unhandled error: {0}")]
+    UnhandledError(#[from] anyhow::Error),
+}
+
+impl From<std::io::Error> for CliError {
+    fn from(value: std::io::Error) -> Self {
+        CliError::UnhandledError(anyhow::Error::new(value))
+    }
+}
+
+impl Commands {
+    fn run(&self) -> Result<(), CliError> {
+        match &self {
+            Commands::TrustedSetup {} => {
+                log::info!("Starting the trusted setup ceremony");
+
+                let artifacts_folder_path = "./artifacts";
+                let setup_artifacts_path = format!("{artifacts_folder_path}/setup.txt");
+                if !fs::exists(artifacts_folder_path)? {
+                    fs::create_dir(artifacts_folder_path)?;
+                }
+                if fs::exists(&setup_artifacts_path)? {
+                    fs::remove_file(&setup_artifacts_path)?;
+                }
+                let mut file = fs::File::create(&setup_artifacts_path)?;
+
+                let mut s_be_bytes = [0; 48];
+                rand::rng().fill_bytes(&mut s_be_bytes);
+                for artifact in SetupArtifactsGenerator::build(s_be_bytes).take(9) {
+                    let mut compressed_p1 = [0; 48];
+                    unsafe {
+                        blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &artifact.g1);
+                    };
+
+                    let mut compressed_p2 = [0; 96];
+                    unsafe {
+                        blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &artifact.g2);
+                    };
+
+                    file.write_all(&compressed_p1)?;
+                    file.write_all(&compressed_p2)?;
+                }
+
+                log::info!(
+                    "Trusted setup ceremony successfully perfomed. Artifacts have been written in \"{setup_artifacts_path}\""
+                );
+
+                Ok(())
+            }
+            Commands::HelloWorld {} => {
+                log::info!("Hello, world!");
+                Ok(())
+            }
         }
     }
 }
@@ -97,10 +125,12 @@ struct SetupArtifactsGenerator {
     index: u8,
 }
 
-fn setup_artifacts_generator(secret: [u8; 48]) -> SetupArtifactsGenerator {
-    SetupArtifactsGenerator {
-        secret: BigUint::from_bytes_be(&secret),
-        index: 0,
+impl SetupArtifactsGenerator {
+    fn build(secret: [u8; 48]) -> Self {
+        Self {
+            secret: BigUint::from_bytes_be(&secret),
+            index: 0,
+        }
     }
 }
 
@@ -156,7 +186,7 @@ impl Iterator for SetupArtifactsGenerator {
 mod tests {
     use rand::RngCore;
 
-    use crate::setup_artifacts_generator;
+    use crate::SetupArtifactsGenerator;
 
     #[test]
     fn test_point_addition_and_scalar_multiplication() {
@@ -292,7 +322,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = setup_artifacts_generator(s_bytes).take(2).collect();
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
         // a1 = 5, a0 = 10`
@@ -360,7 +390,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_two() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = setup_artifacts_generator(s_bytes).take(3).collect();
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
         // a2 = 2, a1 = 3, a0 = 4
