@@ -22,7 +22,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Perfom a trusted setup ceremony.
+    /// Perform a trusted setup ceremony.
     /// The generated artifacts are written in `./artifacts/setup.txt`.
     /// The artifacts are generated up until the degree 9.
     TrustedSetup {},
@@ -106,7 +106,7 @@ impl Commands {
                 file.write_all(stringified_artifacts.as_bytes())?;
 
                 log::info!(
-                    "Trusted setup ceremony successfully perfomed. Artifacts have been written in \"{setup_artifacts_path}\""
+                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{setup_artifacts_path}\""
                 );
 
                 Ok(())
@@ -226,7 +226,7 @@ impl<'de> Deserialize<'de> for SetupArtifact {
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 if raw_p2.len() != 96 {
-                    return Err(de::Error::custom("Invalid g1 length, expected 96"));
+                    return Err(de::Error::custom("Invalid g2 length, expected 96"));
                 }
                 let mut compressed_p2 = [0u8; 96];
                 compressed_p2.copy_from_slice(&raw_p2[..96]);
@@ -305,7 +305,7 @@ impl<'de> Deserialize<'de> for SetupArtifact {
 
                 let raw_p2 = raw_p2.ok_or_else(|| de::Error::missing_field("g2"))?;
                 if raw_p2.len() != 96 {
-                    return Err(de::Error::custom("Invalid g1 length, expected 96"));
+                    return Err(de::Error::custom("Invalid g2 length, expected 96"));
                 }
                 let mut compressed_p2 = [0u8; 96];
                 compressed_p2.copy_from_slice(&raw_p2[..96]);
