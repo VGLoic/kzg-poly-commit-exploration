@@ -169,13 +169,6 @@ impl<'de> Deserialize<'de> for SetupArtifact {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        #[allow(dead_code)]
-        struct SerializedSetupArtifact {
-            g1: Vec<u8>,
-            g2: Vec<u8>,
-        }
-
-        #[derive(Deserialize)]
         #[serde(field_identifier, rename_all = "lowercase")]
         enum Field {
             G1,
