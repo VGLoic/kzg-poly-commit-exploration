@@ -99,8 +99,9 @@ impl Commands {
 
                 const MAX_DEGREE: u8 = 9;
 
-                let setup_artifacts: Vec<_> =
-                    SetupArtifactsGenerator::build(s_be_bytes).take(usize::from(MAX_DEGREE)).collect();
+                let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_be_bytes)
+                    .take(usize::from(MAX_DEGREE))
+                    .collect();
 
                 let stringified_artifacts =
                     serde_json::to_string(&setup_artifacts).map_err(anyhow::Error::from)?;
@@ -124,14 +125,16 @@ impl Commands {
 #[derive(Debug)]
 struct SetupArtifactsGenerator {
     secret: BigUint,
-    index: u8,
+    is_at_power_zero: bool,
+    current_s_powered: BigUint,
 }
 
 impl SetupArtifactsGenerator {
     fn build(secret: [u8; 48]) -> Self {
         Self {
             secret: BigUint::from_bytes_be(&secret),
-            index: 0,
+            is_at_power_zero: true,
+            current_s_powered: BigUint::from(1u8),
         }
     }
 }
@@ -299,8 +302,18 @@ impl Iterator for SetupArtifactsGenerator {
     type Item = SetupArtifact;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let power = self.index;
-        let s_powered_be_bytes = self.secret.pow(u32::from(power)).to_bytes_be();
+        if self.is_at_power_zero {
+            self.is_at_power_zero = false;
+
+            return Some(SetupArtifact {
+                g1: unsafe { *blst::blst_p1_generator() },
+                g2: unsafe { *blst::blst_p2_generator() },
+            });
+        }
+
+        self.current_s_powered *= self.secret.clone();
+
+        let s_powered_be_bytes = self.current_s_powered.to_bytes_be();
         let mut s_powered_as_scalar = blst::blst_scalar::default();
         unsafe {
             blst::blst_scalar_from_be_bytes(
@@ -328,8 +341,6 @@ impl Iterator for SetupArtifactsGenerator {
                 s_powered_as_scalar.b.len() * 8,
             );
         };
-
-        self.index += 1;
 
         Some(SetupArtifact {
             g1: g1_artifact,
