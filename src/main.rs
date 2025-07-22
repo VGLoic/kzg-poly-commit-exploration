@@ -163,58 +163,6 @@ impl Serialize for SetupArtifact {
     }
 }
 
-fn vec_to_blst_p1(v: Vec<u8>) -> Result<blst::blst_p1, anyhow::Error> {
-    if v.len() != 48 {
-        return Err(anyhow::anyhow!(
-            "Invalid length, expected 48, got {}",
-            v.len()
-        ));
-    }
-
-    let mut compressed_p1 = [0u8; 48];
-    compressed_p1.copy_from_slice(&v[..48]);
-    let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
-    unsafe {
-        match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr()) {
-            blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
-            other => Err(other),
-        }
-    }
-    .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
-
-    let mut uncompressed_p1 = blst::blst_p1::default();
-    unsafe {
-        blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
-    };
-    Ok(uncompressed_p1)
-}
-
-fn vec_to_blst_p2(v: Vec<u8>) -> Result<blst::blst_p2, anyhow::Error> {
-    if v.len() != 96 {
-        return Err(anyhow::anyhow!(
-            "Invalid length, expected 96, got {}",
-            v.len()
-        ));
-    }
-
-    let mut compressed_p2 = [0u8; 96];
-    compressed_p2.copy_from_slice(&v[..96]);
-    let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
-    unsafe {
-        match blst::blst_p2_uncompress(&mut uncompressed_p2_affine, compressed_p2.as_ptr()) {
-            blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
-            other => Err(other),
-        }
-    }
-    .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
-
-    let mut uncompressed_p2 = blst::blst_p2::default();
-    unsafe {
-        blst::blst_p2_from_affine(&mut uncompressed_p2, &uncompressed_p2_affine);
-    };
-    Ok(uncompressed_p2)
-}
-
 impl<'de> Deserialize<'de> for SetupArtifact {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -235,6 +183,60 @@ impl<'de> Deserialize<'de> for SetupArtifact {
         }
 
         struct SetupArtifactVisitor;
+
+        fn vec_to_blst_p1(v: Vec<u8>) -> Result<blst::blst_p1, anyhow::Error> {
+            if v.len() != 48 {
+                return Err(anyhow::anyhow!(
+                    "Invalid length, expected 48, got {}",
+                    v.len()
+                ));
+            }
+
+            let mut compressed_p1 = [0u8; 48];
+            compressed_p1.copy_from_slice(&v[..48]);
+            let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
+            unsafe {
+                match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr())
+                {
+                    blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
+                    other => Err(other),
+                }
+            }
+            .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
+
+            let mut uncompressed_p1 = blst::blst_p1::default();
+            unsafe {
+                blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
+            };
+            Ok(uncompressed_p1)
+        }
+
+        fn vec_to_blst_p2(v: Vec<u8>) -> Result<blst::blst_p2, anyhow::Error> {
+            if v.len() != 96 {
+                return Err(anyhow::anyhow!(
+                    "Invalid length, expected 96, got {}",
+                    v.len()
+                ));
+            }
+
+            let mut compressed_p2 = [0u8; 96];
+            compressed_p2.copy_from_slice(&v[..96]);
+            let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
+            unsafe {
+                match blst::blst_p2_uncompress(&mut uncompressed_p2_affine, compressed_p2.as_ptr())
+                {
+                    blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
+                    other => Err(other),
+                }
+            }
+            .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
+
+            let mut uncompressed_p2 = blst::blst_p2::default();
+            unsafe {
+                blst::blst_p2_from_affine(&mut uncompressed_p2, &uncompressed_p2_affine);
+            };
+            Ok(uncompressed_p2)
+        }
 
         impl<'de> Visitor<'de> for SetupArtifactVisitor {
             type Value = SetupArtifact;
