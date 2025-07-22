@@ -97,8 +97,10 @@ impl Commands {
                 let mut s_be_bytes = [0; 48];
                 rand::rng().fill_bytes(&mut s_be_bytes);
 
+                const MAX_DEGREE: u8 = 9;
+
                 let setup_artifacts: Vec<_> =
-                    SetupArtifactsGenerator::build(s_be_bytes).take(9).collect();
+                    SetupArtifactsGenerator::build(s_be_bytes).take(usize::from(MAX_DEGREE)).collect();
 
                 let stringified_artifacts =
                     serde_json::to_string(&setup_artifacts).map_err(anyhow::Error::from)?;
