@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
-use std::str::FromStr;
+use num_bigint::BigUint;
+use rand::RngCore;
+use std::{fs, io::Write, str::FromStr};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -14,6 +16,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Perfom a trusted setup ceremony.
+    /// The generated artifacts are written in `./artifacts/setup.txt`.
+    /// The artifacts are generated up until the degree 9.
+    TrustedSetup {},
     /// Print "Hello, world!"
     HelloWorld {},
 }
@@ -43,6 +49,40 @@ fn main() {
     }
 
     match &cli.command {
+        Some(Commands::TrustedSetup {}) => {
+            log::info!("Starting the trusted setup ceremony");
+
+            let artifacts_folder_path = "./artifacts";
+            let setup_artifacts_path = format!("{artifacts_folder_path}/setup.txt");
+            if !fs::exists(artifacts_folder_path).unwrap() {
+                fs::create_dir(artifacts_folder_path).unwrap();
+            }
+            if fs::exists(&setup_artifacts_path).unwrap() {
+                fs::remove_file(&setup_artifacts_path).unwrap();
+            }
+            let mut file = fs::File::create(&setup_artifacts_path).unwrap();
+
+            let mut s_be_bytes = [0; 48];
+            rand::rng().fill_bytes(&mut s_be_bytes);
+            for artifact in setup_artifacts_generator(s_be_bytes).take(9) {
+                let mut compressed_p1 = [0; 48];
+                unsafe {
+                    blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &artifact.g1);
+                };
+
+                let mut compressed_p2 = [0; 96];
+                unsafe {
+                    blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &artifact.g2);
+                };
+
+                file.write_all(&compressed_p1).unwrap();
+                file.write_all(&compressed_p2).unwrap();
+            }
+
+            log::info!(
+                "Trusted setup ceremony successfully perfomed. Artifacts have been written in \"{setup_artifacts_path}\""
+            )
+        }
         Some(Commands::HelloWorld {}) => {
             log::info!("Hello, world!");
         }
@@ -52,10 +92,71 @@ fn main() {
     }
 }
 
+struct SetupArtifactsGenerator {
+    secret: BigUint,
+    index: u8,
+}
+
+fn setup_artifacts_generator(secret: [u8; 48]) -> SetupArtifactsGenerator {
+    SetupArtifactsGenerator {
+        secret: BigUint::from_bytes_be(&secret),
+        index: 0,
+    }
+}
+
+struct SetupArtifact {
+    g1: blst::blst_p1,
+    g2: blst::blst_p2,
+}
+
+impl Iterator for SetupArtifactsGenerator {
+    type Item = SetupArtifact;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let power = self.index;
+        let s_powered_be_bytes = self.secret.pow(u32::from(power)).to_bytes_be();
+        let mut s_powered_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_be_bytes(
+                &mut s_powered_as_scalar,
+                s_powered_be_bytes.as_ptr(),
+                s_powered_be_bytes.len(),
+            );
+        };
+        let mut g1_artifact = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut g1_artifact,
+                blst::blst_p1_generator(),
+                s_powered_as_scalar.b.as_ptr(),
+                s_powered_as_scalar.b.len() * 8,
+            );
+        };
+
+        let mut g2_artifact = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(
+                &mut g2_artifact,
+                blst::blst_p2_generator(),
+                s_powered_as_scalar.b.as_ptr(),
+                s_powered_as_scalar.b.len() * 8,
+            );
+        };
+
+        self.index += 1;
+
+        Some(SetupArtifact {
+            g1: g1_artifact,
+            g2: g2_artifact,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use num_bigint::BigUint;
     use rand::RngCore;
+
+    use crate::setup_artifacts_generator;
 
     #[test]
     fn test_point_addition_and_scalar_multiplication() {
@@ -191,29 +292,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let mut s_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
-        };
-
-        let mut s_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut s_g1,
-                blst::blst_p1_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
-        let mut s_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut s_g2,
-                blst::blst_p2_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
+        let setup_artifacts: Vec<_> = setup_artifacts_generator(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
         // a1 = 5, a0 = 10`
@@ -231,7 +310,12 @@ mod tests {
         let a1 = blst_scalar_from_u8(5);
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
+            blst::blst_p1_mult(
+                &mut order_one_part,
+                &setup_artifacts[1].g1,
+                a1.b.as_ptr(),
+                a1.b.len() * 8,
+            );
         };
         let mut commitment = blst::blst_p1::default();
         unsafe {
@@ -252,7 +336,7 @@ mod tests {
         };
 
         let z = unsafe { *blst::blst_p2_generator() };
-        let divider = blst_p2_sub(&s_g2, &z);
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
         let y_as_scalar = blst_scalar_from_u8(15);
@@ -276,60 +360,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_two() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let s_as_buint = BigUint::from_bytes_be(&s_bytes);
-
-        let mut s_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
-        };
-
-        let mut s_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut s_g1,
-                blst::blst_p1_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
-        let mut s_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut s_g2,
-                blst::blst_p2_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
-
-        let s_squared_as_be_bytes = s_as_buint.pow(2).to_bytes_be();
-        let mut s_squared_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(
-                &mut s_squared_as_scalar,
-                s_squared_as_be_bytes.as_ptr(),
-                s_squared_as_be_bytes.len(),
-            );
-        };
-
-        let mut s_squared_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut s_squared_g1,
-                blst::blst_p1_generator(),
-                s_squared_as_scalar.b.as_ptr(),
-                s_squared_as_scalar.b.len() * 8,
-            )
-        };
-        let mut s_squared_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut s_squared_g2,
-                blst::blst_p2_generator(),
-                s_squared_as_scalar.b.as_ptr(),
-                s_squared_as_scalar.b.len() * 8,
-            )
-        };
+        let setup_artifacts: Vec<_> = setup_artifacts_generator(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
         // a2 = 2, a1 = 3, a0 = 4
@@ -346,14 +377,19 @@ mod tests {
         let a1 = blst_scalar_from_u8(3);
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
+            blst::blst_p1_mult(
+                &mut order_one_part,
+                &setup_artifacts[1].g1,
+                a1.b.as_ptr(),
+                a1.b.len() * 8,
+            );
         };
         let a2 = blst_scalar_from_u8(2);
         let mut order_two_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut order_two_part,
-                &s_squared_g1,
+                &setup_artifacts[2].g1,
                 a2.b.as_ptr(),
                 a2.b.len() * 8,
             );
@@ -382,7 +418,7 @@ mod tests {
         unsafe {
             blst::blst_p1_mult(
                 &mut q_at_s_order_one_part,
-                &s_g1,
+                &setup_artifacts[1].g1,
                 b1.b.as_ptr(),
                 b1.b.len() * 8,
             );
@@ -402,7 +438,7 @@ mod tests {
                 z_as_scalar.b.len() * 8,
             );
         }
-        let divider = blst_p2_sub(&s_g2, &z);
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
         let y_as_scalar = blst_scalar_from_u8(18);
