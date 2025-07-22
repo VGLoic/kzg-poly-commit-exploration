@@ -151,13 +151,13 @@ impl Serialize for SetupArtifact {
         unsafe {
             blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &self.g1);
         };
-        state.serialize_field("g1", &compressed_p1.into_iter().collect::<Vec<u8>>())?;
+        state.serialize_field("g1", &compressed_p1[..])?;
 
         let mut compressed_p2 = [0; 96];
         unsafe {
             blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &self.g2);
         };
-        state.serialize_field("g2", &compressed_p2.into_iter().collect::<Vec<u8>>())?;
+        state.serialize_field("g2", &compressed_p2[..])?;
 
         state.end()
     }
