@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use num_bigint::BigUint;
 use rand::RngCore;
+use serde::{Serialize, ser::SerializeStruct};
 use std::{fs, io::Write, str::FromStr};
 use thiserror::Error;
 
@@ -91,20 +92,14 @@ impl Commands {
 
                 let mut s_be_bytes = [0; 48];
                 rand::rng().fill_bytes(&mut s_be_bytes);
-                for artifact in SetupArtifactsGenerator::build(s_be_bytes).take(9) {
-                    let mut compressed_p1 = [0; 48];
-                    unsafe {
-                        blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &artifact.g1);
-                    };
 
-                    let mut compressed_p2 = [0; 96];
-                    unsafe {
-                        blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &artifact.g2);
-                    };
+                let setup_artifacts: Vec<_> =
+                    SetupArtifactsGenerator::build(s_be_bytes).take(9).collect();
 
-                    file.write_all(&compressed_p1)?;
-                    file.write_all(&compressed_p2)?;
-                }
+                let stringified_artifacts =
+                    serde_json::to_string(&setup_artifacts).map_err(anyhow::Error::from)?;
+
+                file.write_all(stringified_artifacts.as_bytes())?;
 
                 log::info!(
                     "Trusted setup ceremony successfully perfomed. Artifacts have been written in \"{setup_artifacts_path}\""
@@ -120,6 +115,7 @@ impl Commands {
     }
 }
 
+#[derive(Debug)]
 struct SetupArtifactsGenerator {
     secret: BigUint,
     index: u8,
@@ -134,9 +130,33 @@ impl SetupArtifactsGenerator {
     }
 }
 
+#[derive(Debug)]
 struct SetupArtifact {
     g1: blst::blst_p1,
     g2: blst::blst_p2,
+}
+
+impl Serialize for SetupArtifact {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("SetupArtifact", 2)?;
+
+        let mut compressed_p1 = [0; 48];
+        unsafe {
+            blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &self.g1);
+        };
+        state.serialize_field("g1", &compressed_p1.into_iter().collect::<Vec<u8>>())?;
+
+        let mut compressed_p2 = [0; 96];
+        unsafe {
+            blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &self.g2);
+        };
+        state.serialize_field("g2", &compressed_p2.into_iter().collect::<Vec<u8>>())?;
+
+        state.end()
+    }
 }
 
 impl Iterator for SetupArtifactsGenerator {
