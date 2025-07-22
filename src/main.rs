@@ -311,7 +311,7 @@ impl Iterator for SetupArtifactsGenerator {
             });
         }
 
-        self.current_s_powered *= self.secret.clone();
+        self.current_s_powered *= &self.secret;
 
         let s_powered_be_bytes = self.current_s_powered.to_bytes_be();
         let mut s_powered_as_scalar = blst::blst_scalar::default();
