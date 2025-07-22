@@ -236,6 +236,20 @@ fn test_commitment_for_polynomial_degree_one() {
 }
 ```
 
+### Trusted setup
+
+I want to add a new command in order to execute the trusted setup ceremony, it will look a bit like what has been done in the tests in my previous step but in a more constructed way:
+- a random field element `s` is generated,
+- the `s` is used in order to generate the points `s^k & G, k = 0 .. N` on the two elliptic curves using their generator `G`,
+- the points are written in a file `./artifacts/setup.txt`.
+
+> [!CAUTION]
+> Do not use this setup for any production use, it is made for testing purpose only.
+
+As requested per the trusted setup ceremony, the secret `s` is contained in the command only and is not written in the artifacts, it disappears once the command is executed. We only end up with the public points on the two curves but `s` is not recoverable.
+
+The generation of `s` is simply made using a basic `fill_bytes` with the default `rng` of the [rand crate](https://docs.rs/rand/latest/rand/), it is perfectly fine for this test use case but it would require special attention for a more serious usage. Furthermore, this kind of ceremony is generally not done with a single actor but performed using multi party computation with many actors. Vitalik Buterin has an [article about this](https://vitalik.eth.limo/general/2022/03/14/trustedsetup.html) that I have not read yet.
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
@@ -249,5 +263,6 @@ A single executable as a CLI is present, use `cargo run -- --help` to show the a
 - [Exploring Elliptic Curve Pairings by Vitalik Buterin](https://vitalik.eth.limo/general/2017/01/14/exploring_ecp.html): nice overview of elliptic curve and pairings, dive a little bit in the math,
 - [A (relatively easy to understand) primer on elliptic curve cryptography)](https://blog.cloudflare.com/a-relatively-easy-to-understand-primer-on-elliptic-curve-cryptography/): nice introduction to elliptic curve,
 - [BLS12-381 for the rest of us (revised version)](https://eth2book.info/latest/part2/building_blocks/bls12-381/): in depth documentation about BLS12-381, its definition but also how to use it,
-- [Pairings for beginners](https://static1.squarespace.com/static/5fdbb09f31d71c1227082339/t/5ff394720493bd28278889c6/1609798774687/PairingsForBeginners.pdf): serious mathematical way to elliptic curves and pairings.
+- [Pairings for beginners](https://static1.squarespace.com/static/5fdbb09f31d71c1227082339/t/5ff394720493bd28278889c6/1609798774687/PairingsForBeginners.pdf): serious mathematical way to elliptic curves and pairings,
+- [`How do trusted setups work?` by Vitalik Buterin](https://vitalik.eth.limo/general/2022/03/14/trustedsetup.html): not read yet, but should be good for seriously understanding trusted setup.
 

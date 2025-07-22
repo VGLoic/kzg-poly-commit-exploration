@@ -1,5 +1,13 @@
 use clap::{Parser, Subcommand};
-use std::str::FromStr;
+use num_bigint::BigUint;
+use rand::RngCore;
+use serde::{
+    Deserialize, Serialize,
+    de::{self, MapAccess, SeqAccess, Visitor},
+    ser::SerializeStruct,
+};
+use std::{fs, io::Write, str::FromStr};
+use thiserror::Error;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -14,6 +22,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Perform a trusted setup ceremony.
+    /// The generated artifacts are written in `./artifacts/setup.txt`.
+    /// The artifacts are generated up until the degree 9.
+    TrustedSetup {},
     /// Print "Hello, world!"
     HelloWorld {},
 }
@@ -43,8 +55,10 @@ fn main() {
     }
 
     match &cli.command {
-        Some(Commands::HelloWorld {}) => {
-            log::info!("Hello, world!");
+        Some(cmd) => {
+            if let Err(e) = cmd.run() {
+                panic!("Command execution failed with error: {e}")
+            }
         }
         None => {
             log::warn!("No command has been input")
@@ -52,10 +66,294 @@ fn main() {
     }
 }
 
+#[derive(Error, Debug)]
+enum CliError {
+    #[error("Unhandled error: {0}")]
+    UnhandledError(#[from] anyhow::Error),
+}
+
+impl From<std::io::Error> for CliError {
+    fn from(value: std::io::Error) -> Self {
+        CliError::UnhandledError(anyhow::Error::new(value))
+    }
+}
+
+impl Commands {
+    fn run(&self) -> Result<(), CliError> {
+        match &self {
+            Commands::TrustedSetup {} => {
+                log::info!("Starting the trusted setup ceremony");
+
+                let artifacts_folder_path = "./artifacts";
+                let setup_artifacts_path = format!("{artifacts_folder_path}/setup.txt");
+                if !fs::exists(artifacts_folder_path)? {
+                    fs::create_dir(artifacts_folder_path)?;
+                }
+                if fs::exists(&setup_artifacts_path)? {
+                    fs::remove_file(&setup_artifacts_path)?;
+                }
+                let mut file = fs::File::create(&setup_artifacts_path)?;
+
+                let mut s_be_bytes = [0; 48];
+                rand::rng().fill_bytes(&mut s_be_bytes);
+
+                const MAX_DEGREE: u8 = 9;
+
+                let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_be_bytes)
+                    .take(usize::from(MAX_DEGREE))
+                    .collect();
+
+                let stringified_artifacts =
+                    serde_json::to_string(&setup_artifacts).map_err(anyhow::Error::from)?;
+
+                file.write_all(stringified_artifacts.as_bytes())?;
+
+                log::info!(
+                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{setup_artifacts_path}\""
+                );
+
+                Ok(())
+            }
+            Commands::HelloWorld {} => {
+                log::info!("Hello, world!");
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SetupArtifactsGenerator {
+    secret: BigUint,
+    is_at_power_zero: bool,
+    current_s_powered: BigUint,
+}
+
+impl SetupArtifactsGenerator {
+    fn build(secret: [u8; 48]) -> Self {
+        Self {
+            secret: BigUint::from_bytes_be(&secret),
+            is_at_power_zero: true,
+            current_s_powered: BigUint::from(1u8),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SetupArtifact {
+    g1: blst::blst_p1,
+    g2: blst::blst_p2,
+}
+
+impl Serialize for SetupArtifact {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("SetupArtifact", 2)?;
+
+        let mut compressed_p1 = [0; 48];
+        unsafe {
+            blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &self.g1);
+        };
+        state.serialize_field("g1", &compressed_p1[..])?;
+
+        let mut compressed_p2 = [0; 96];
+        unsafe {
+            blst::blst_p2_compress(compressed_p2.as_mut_ptr(), &self.g2);
+        };
+        state.serialize_field("g2", &compressed_p2[..])?;
+
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for SetupArtifact {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            G1,
+            G2,
+        }
+
+        struct SetupArtifactVisitor;
+
+        fn vec_to_blst_p1(v: Vec<u8>) -> Result<blst::blst_p1, anyhow::Error> {
+            if v.len() != 48 {
+                return Err(anyhow::anyhow!(
+                    "Invalid length, expected 48, got {}",
+                    v.len()
+                ));
+            }
+
+            let mut compressed_p1 = [0u8; 48];
+            compressed_p1.copy_from_slice(&v);
+            let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
+            unsafe {
+                match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr())
+                {
+                    blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
+                    other => Err(other),
+                }
+            }
+            .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
+
+            let mut uncompressed_p1 = blst::blst_p1::default();
+            unsafe {
+                blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
+            };
+            Ok(uncompressed_p1)
+        }
+
+        fn vec_to_blst_p2(v: Vec<u8>) -> Result<blst::blst_p2, anyhow::Error> {
+            if v.len() != 96 {
+                return Err(anyhow::anyhow!(
+                    "Invalid length, expected 96, got {}",
+                    v.len()
+                ));
+            }
+
+            let mut compressed_p2 = [0u8; 96];
+            compressed_p2.copy_from_slice(&v);
+            let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
+            unsafe {
+                match blst::blst_p2_uncompress(&mut uncompressed_p2_affine, compressed_p2.as_ptr())
+                {
+                    blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
+                    other => Err(other),
+                }
+            }
+            .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
+
+            let mut uncompressed_p2 = blst::blst_p2::default();
+            unsafe {
+                blst::blst_p2_from_affine(&mut uncompressed_p2, &uncompressed_p2_affine);
+            };
+            Ok(uncompressed_p2)
+        }
+
+        impl<'de> Visitor<'de> for SetupArtifactVisitor {
+            type Value = SetupArtifact;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct SetupArtifact")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<SetupArtifact, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let raw_g1: Vec<u8> = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let g1 = vec_to_blst_p1(raw_g1).map_err(de::Error::custom)?;
+
+                let raw_g2: Vec<u8> = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let g2 = vec_to_blst_p2(raw_g2).map_err(de::Error::custom)?;
+
+                Ok(SetupArtifact { g1, g2 })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<SetupArtifact, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut raw_g1: Option<Vec<u8>> = None;
+                let mut raw_g2: Option<Vec<u8>> = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::G1 => {
+                            if raw_g1.is_some() {
+                                return Err(de::Error::duplicate_field("g1"));
+                            }
+                            raw_g1 = Some(map.next_value()?);
+                        }
+                        Field::G2 => {
+                            if raw_g2.is_some() {
+                                return Err(de::Error::duplicate_field("g2"));
+                            }
+                            raw_g2 = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let raw_g1 = raw_g1.ok_or_else(|| de::Error::missing_field("g1"))?;
+                let g1 = vec_to_blst_p1(raw_g1).map_err(de::Error::custom)?;
+
+                let raw_g2 = raw_g2.ok_or_else(|| de::Error::missing_field("g2"))?;
+                let g2 = vec_to_blst_p2(raw_g2).map_err(de::Error::custom)?;
+
+                Ok(SetupArtifact { g1, g2 })
+            }
+        }
+
+        const FIELDS: &[&str] = &["g1", "g2"];
+        deserializer.deserialize_struct("SetupArtifact", FIELDS, SetupArtifactVisitor)
+    }
+}
+
+impl Iterator for SetupArtifactsGenerator {
+    type Item = SetupArtifact;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.is_at_power_zero {
+            self.is_at_power_zero = false;
+
+            return Some(SetupArtifact {
+                g1: unsafe { *blst::blst_p1_generator() },
+                g2: unsafe { *blst::blst_p2_generator() },
+            });
+        }
+
+        self.current_s_powered *= &self.secret;
+
+        let s_powered_be_bytes = self.current_s_powered.to_bytes_be();
+        let mut s_powered_as_scalar = blst::blst_scalar::default();
+        unsafe {
+            blst::blst_scalar_from_be_bytes(
+                &mut s_powered_as_scalar,
+                s_powered_be_bytes.as_ptr(),
+                s_powered_be_bytes.len(),
+            );
+        };
+        let mut g1_artifact = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut g1_artifact,
+                blst::blst_p1_generator(),
+                s_powered_as_scalar.b.as_ptr(),
+                s_powered_as_scalar.b.len() * 8,
+            );
+        };
+
+        let mut g2_artifact = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(
+                &mut g2_artifact,
+                blst::blst_p2_generator(),
+                s_powered_as_scalar.b.as_ptr(),
+                s_powered_as_scalar.b.len() * 8,
+            );
+        };
+
+        Some(SetupArtifact {
+            g1: g1_artifact,
+            g2: g2_artifact,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use num_bigint::BigUint;
     use rand::RngCore;
+
+    use crate::SetupArtifactsGenerator;
 
     #[test]
     fn test_point_addition_and_scalar_multiplication() {
@@ -191,29 +489,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let mut s_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
-        };
-
-        let mut s_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut s_g1,
-                blst::blst_p1_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
-        let mut s_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut s_g2,
-                blst::blst_p2_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
         // a1 = 5, a0 = 10`
@@ -231,7 +507,12 @@ mod tests {
         let a1 = blst_scalar_from_u8(5);
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
+            blst::blst_p1_mult(
+                &mut order_one_part,
+                &setup_artifacts[1].g1,
+                a1.b.as_ptr(),
+                a1.b.len() * 8,
+            );
         };
         let mut commitment = blst::blst_p1::default();
         unsafe {
@@ -252,7 +533,7 @@ mod tests {
         };
 
         let z = unsafe { *blst::blst_p2_generator() };
-        let divider = blst_p2_sub(&s_g2, &z);
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
         let y_as_scalar = blst_scalar_from_u8(15);
@@ -276,60 +557,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_two() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let s_as_buint = BigUint::from_bytes_be(&s_bytes);
-
-        let mut s_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(&mut s_as_scalar, s_bytes.as_ptr(), s_bytes.len());
-        };
-
-        let mut s_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut s_g1,
-                blst::blst_p1_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
-        let mut s_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut s_g2,
-                blst::blst_p2_generator(),
-                s_as_scalar.b.as_ptr(),
-                s_as_scalar.b.len() * 8,
-            );
-        };
-
-        let s_squared_as_be_bytes = s_as_buint.pow(2).to_bytes_be();
-        let mut s_squared_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(
-                &mut s_squared_as_scalar,
-                s_squared_as_be_bytes.as_ptr(),
-                s_squared_as_be_bytes.len(),
-            );
-        };
-
-        let mut s_squared_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut s_squared_g1,
-                blst::blst_p1_generator(),
-                s_squared_as_scalar.b.as_ptr(),
-                s_squared_as_scalar.b.len() * 8,
-            )
-        };
-        let mut s_squared_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut s_squared_g2,
-                blst::blst_p2_generator(),
-                s_squared_as_scalar.b.as_ptr(),
-                s_squared_as_scalar.b.len() * 8,
-            )
-        };
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
         // a2 = 2, a1 = 3, a0 = 4
@@ -346,14 +574,19 @@ mod tests {
         let a1 = blst_scalar_from_u8(3);
         let mut order_one_part = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
+            blst::blst_p1_mult(
+                &mut order_one_part,
+                &setup_artifacts[1].g1,
+                a1.b.as_ptr(),
+                a1.b.len() * 8,
+            );
         };
         let a2 = blst_scalar_from_u8(2);
         let mut order_two_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut order_two_part,
-                &s_squared_g1,
+                &setup_artifacts[2].g1,
                 a2.b.as_ptr(),
                 a2.b.len() * 8,
             );
@@ -382,7 +615,7 @@ mod tests {
         unsafe {
             blst::blst_p1_mult(
                 &mut q_at_s_order_one_part,
-                &s_g1,
+                &setup_artifacts[1].g1,
                 b1.b.as_ptr(),
                 b1.b.len() * 8,
             );
@@ -402,7 +635,7 @@ mod tests {
                 z_as_scalar.b.len() * 8,
             );
         }
-        let divider = blst_p2_sub(&s_g2, &z);
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
         let y_as_scalar = blst_scalar_from_u8(18);
