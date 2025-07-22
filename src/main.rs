@@ -163,6 +163,58 @@ impl Serialize for SetupArtifact {
     }
 }
 
+fn vec_to_blst_p1(v: Vec<u8>) -> Result<blst::blst_p1, anyhow::Error> {
+    if v.len() != 48 {
+        return Err(anyhow::anyhow!(
+            "Invalid length, expected 48, got {}",
+            v.len()
+        ));
+    }
+
+    let mut compressed_p1 = [0u8; 48];
+    compressed_p1.copy_from_slice(&v[..48]);
+    let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
+    unsafe {
+        match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr()) {
+            blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
+            other => Err(other),
+        }
+    }
+    .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
+
+    let mut uncompressed_p1 = blst::blst_p1::default();
+    unsafe {
+        blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
+    };
+    Ok(uncompressed_p1)
+}
+
+fn vec_to_blst_p2(v: Vec<u8>) -> Result<blst::blst_p2, anyhow::Error> {
+    if v.len() != 96 {
+        return Err(anyhow::anyhow!(
+            "Invalid length, expected 96, got {}",
+            v.len()
+        ));
+    }
+
+    let mut compressed_p2 = [0u8; 96];
+    compressed_p2.copy_from_slice(&v[..96]);
+    let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
+    unsafe {
+        match blst::blst_p2_uncompress(&mut uncompressed_p2_affine, compressed_p2.as_ptr()) {
+            blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
+            other => Err(other),
+        }
+    }
+    .map_err(|err| anyhow::anyhow!("Got error while uncompressing: {err:?}"))?;
+
+    let mut uncompressed_p2 = blst::blst_p2::default();
+    unsafe {
+        blst::blst_p2_from_affine(&mut uncompressed_p2, &uncompressed_p2_affine);
+    };
+    Ok(uncompressed_p2)
+}
+
 impl<'de> Deserialize<'de> for SetupArtifact {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -195,143 +247,49 @@ impl<'de> Deserialize<'de> for SetupArtifact {
             where
                 V: SeqAccess<'de>,
             {
-                let raw_p1: Vec<u8> = seq
+                let raw_g1: Vec<u8> = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                if raw_p1.len() != 48 {
-                    return Err(de::Error::custom("Invalid g1 length, expected 48"));
-                }
-                let mut compressed_p1 = [0u8; 48];
-                compressed_p1.copy_from_slice(&raw_p1[..48]);
-                let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
-                unsafe {
-                    match blst::blst_p1_uncompress(
-                        &mut uncompressed_p1_affine,
-                        compressed_p1.as_ptr(),
-                    ) {
-                        blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
-                        other => Err(other),
-                    }
-                }
-                .map_err(|err| {
-                    de::Error::custom(anyhow::anyhow!("Got error while uncompressing: {err:?}"))
-                })?;
+                let g1 = vec_to_blst_p1(raw_g1).map_err(de::Error::custom)?;
 
-                let mut uncompressed_p1 = blst::blst_p1::default();
-                unsafe {
-                    blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
-                };
-
-                let raw_p2: Vec<u8> = seq
+                let raw_g2: Vec<u8> = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                if raw_p2.len() != 96 {
-                    return Err(de::Error::custom("Invalid g2 length, expected 96"));
-                }
-                let mut compressed_p2 = [0u8; 96];
-                compressed_p2.copy_from_slice(&raw_p2[..96]);
-                let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
-                unsafe {
-                    match blst::blst_p2_uncompress(
-                        &mut uncompressed_p2_affine,
-                        compressed_p2.as_ptr(),
-                    ) {
-                        blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
-                        other => Err(other),
-                    }
-                }
-                .map_err(|err| {
-                    de::Error::custom(anyhow::anyhow!("Got error while uncompressing: {err:?}"))
-                })?;
+                let g2 = vec_to_blst_p2(raw_g2).map_err(de::Error::custom)?;
 
-                let mut uncompressed_p2 = blst::blst_p2::default();
-                unsafe {
-                    blst::blst_p2_from_affine(&mut uncompressed_p2, &uncompressed_p2_affine);
-                };
-
-                Ok(SetupArtifact {
-                    g1: uncompressed_p1,
-                    g2: uncompressed_p2,
-                })
+                Ok(SetupArtifact { g1, g2 })
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<SetupArtifact, V::Error>
             where
                 V: MapAccess<'de>,
             {
-                let mut raw_p1: Option<Vec<u8>> = None;
-                let mut raw_p2: Option<Vec<u8>> = None;
+                let mut raw_g1: Option<Vec<u8>> = None;
+                let mut raw_g2: Option<Vec<u8>> = None;
                 while let Some(key) = map.next_key()? {
                     match key {
                         Field::G1 => {
-                            if raw_p1.is_some() {
+                            if raw_g1.is_some() {
                                 return Err(de::Error::duplicate_field("g1"));
                             }
-                            raw_p1 = Some(map.next_value()?);
+                            raw_g1 = Some(map.next_value()?);
                         }
                         Field::G2 => {
-                            if raw_p2.is_some() {
+                            if raw_g2.is_some() {
                                 return Err(de::Error::duplicate_field("g2"));
                             }
-                            raw_p2 = Some(map.next_value()?);
+                            raw_g2 = Some(map.next_value()?);
                         }
                     }
                 }
 
-                let raw_p1 = raw_p1.ok_or_else(|| de::Error::missing_field("g1"))?;
-                if raw_p1.len() != 48 {
-                    return Err(de::Error::custom("Invalid g1 length, expected 48"));
-                }
-                let mut compressed_p1 = [0u8; 48];
-                compressed_p1.copy_from_slice(&raw_p1[..48]);
-                let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
-                unsafe {
-                    match blst::blst_p1_uncompress(
-                        &mut uncompressed_p1_affine,
-                        compressed_p1.as_ptr(),
-                    ) {
-                        blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
-                        other => Err(other),
-                    }
-                }
-                .map_err(|err| {
-                    de::Error::custom(anyhow::anyhow!("Got error while uncompressing: {err:?}"))
-                })?;
+                let raw_g1 = raw_g1.ok_or_else(|| de::Error::missing_field("g1"))?;
+                let g1 = vec_to_blst_p1(raw_g1).map_err(de::Error::custom)?;
 
-                let mut uncompressed_p1 = blst::blst_p1::default();
-                unsafe {
-                    blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
-                };
+                let raw_g2 = raw_g2.ok_or_else(|| de::Error::missing_field("g2"))?;
+                let g2 = vec_to_blst_p2(raw_g2).map_err(de::Error::custom)?;
 
-                let raw_p2 = raw_p2.ok_or_else(|| de::Error::missing_field("g2"))?;
-                if raw_p2.len() != 96 {
-                    return Err(de::Error::custom("Invalid g2 length, expected 96"));
-                }
-                let mut compressed_p2 = [0u8; 96];
-                compressed_p2.copy_from_slice(&raw_p2[..96]);
-                let mut uncompressed_p2_affine = blst::blst_p2_affine::default();
-                unsafe {
-                    match blst::blst_p2_uncompress(
-                        &mut uncompressed_p2_affine,
-                        compressed_p2.as_ptr(),
-                    ) {
-                        blst::BLST_ERROR::BLST_SUCCESS => Ok(()),
-                        other => Err(other),
-                    }
-                }
-                .map_err(|err| {
-                    de::Error::custom(anyhow::anyhow!("Got error while uncompressing: {err:?}"))
-                })?;
-
-                let mut uncompressed_p2 = blst::blst_p2::default();
-                unsafe {
-                    blst::blst_p2_from_affine(&mut uncompressed_p2, &uncompressed_p2_affine);
-                };
-
-                Ok(SetupArtifact {
-                    g1: uncompressed_p1,
-                    g2: uncompressed_p2,
-                })
+                Ok(SetupArtifact { g1, g2 })
             }
         }
 
