@@ -253,6 +253,13 @@ The generation of `s` is simply made using a basic `fill_bytes` with the default
 > [!NOTE]
 > Serialization is made using [serde](https://serde.rs/). The serialization is implemented by first compressing the group element and then serializing the byte array. Deserialization is implemented using the other way around.
 
+### Polynomial commitment
+
+Now that we have the artifacts of the trusted setup, we can implement the commitment part. The plan will be to add a new command such that:
+- it receives as input the polynomial coefficients,
+- it retrieves the trusted setup artifacts,
+- it computes the polynomial commitment and generate a new artifact with the polynomial and the associated commitment.
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.

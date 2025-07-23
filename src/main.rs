@@ -1,6 +1,11 @@
 use clap::{Parser, Subcommand};
 use rand::RngCore;
-use std::{fs, io::Write, str::FromStr};
+use serde::{Serialize, ser::SerializeStruct};
+use std::{
+    fs,
+    io::{BufReader, Write},
+    str::FromStr,
+};
 use thiserror::Error;
 
 mod trusted_setup;
@@ -20,6 +25,8 @@ struct Cli {
 enum Commands {
     /// Perform a trusted setup ceremony and write the artifacts in './artifacts/setup.json'. Artifacts are genetated until degree 9.
     TrustedSetup {},
+    /// Commit to a polynomial using the trusted setup artifacts
+    Commit {},
 }
 
 fn main() {
@@ -70,21 +77,23 @@ impl From<std::io::Error> for CliError {
     }
 }
 
+const ARTIFACTS_FOLDER_PATH: &str = "./artifacts";
+const SETUP_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/setup.json";
+const COMMITMENT_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/commitment.json";
+
 impl Commands {
     fn run(&self) -> Result<(), CliError> {
         match &self {
             Commands::TrustedSetup {} => {
                 log::info!("Starting the trusted setup ceremony");
 
-                let artifacts_folder_path = "./artifacts";
-                let setup_artifacts_path = format!("{artifacts_folder_path}/setup.json");
-                if !fs::exists(artifacts_folder_path)? {
-                    fs::create_dir(artifacts_folder_path)?;
+                if !fs::exists(ARTIFACTS_FOLDER_PATH)? {
+                    fs::create_dir(SETUP_ARTIFACTS_FOLDER_PATH)?;
                 }
-                if fs::exists(&setup_artifacts_path)? {
-                    fs::remove_file(&setup_artifacts_path)?;
+                if fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
+                    fs::remove_file(SETUP_ARTIFACTS_FOLDER_PATH)?;
                 }
-                let mut file = fs::File::create(&setup_artifacts_path)?;
+                let mut file = fs::File::create(SETUP_ARTIFACTS_FOLDER_PATH)?;
 
                 let mut s_be_bytes = [0; 48];
                 rand::rng().fill_bytes(&mut s_be_bytes);
@@ -102,7 +111,67 @@ impl Commands {
                 file.write_all(stringified_artifacts.as_bytes())?;
 
                 log::info!(
-                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{setup_artifacts_path}\""
+                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{SETUP_ARTIFACTS_FOLDER_PATH}\""
+                );
+
+                Ok(())
+            }
+            Commands::Commit {} => {
+                log::info!("Starting to commit to the polynomial P(x) = 5x + 3");
+
+                if !fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Trusted setup artifacts have not been found, generate them beforehand."
+                    )
+                    .into());
+                }
+
+                let file = fs::File::open(SETUP_ARTIFACTS_FOLDER_PATH)?;
+                let reader = BufReader::new(file);
+
+                let setup_artifacts: Vec<trusted_setup::SetupArtifact> =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                let a0 = blst_scalar_from_u8(3);
+                let mut constant_part = blst::blst_p1::default();
+                unsafe {
+                    blst::blst_p1_mult(
+                        &mut constant_part,
+                        blst::blst_p1_generator(),
+                        a0.b.as_ptr(),
+                        a0.b.len() * 8,
+                    );
+                };
+
+                let a1 = blst_scalar_from_u8(5);
+                let mut order_one_part = blst::blst_p1::default();
+                unsafe {
+                    blst::blst_p1_mult(
+                        &mut order_one_part,
+                        &setup_artifacts[1].g1,
+                        a1.b.as_ptr(),
+                        a1.b.len() * 8,
+                    );
+                };
+                let mut commitment = blst::blst_p1::default();
+                unsafe {
+                    blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
+                };
+
+                let stringified_commitment = serde_json::to_string(&PolynomialCommitment {
+                    coefficients: vec![3, 5],
+                    commitment,
+                })
+                .map_err(anyhow::Error::from)?;
+
+                if fs::exists(COMMITMENT_ARTIFACTS_FOLDER_PATH)? {
+                    fs::remove_file(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                }
+                let mut file = fs::File::create(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                file.write_all(stringified_commitment.as_bytes())?;
+
+                log::info!(
+                    "Commitment to the polynomial \"P(x) = 5x + 3\" has been successfully generated."
                 );
 
                 Ok(())
@@ -111,11 +180,44 @@ impl Commands {
     }
 }
 
+#[derive(Debug)]
+struct PolynomialCommitment {
+    coefficients: Vec<u8>,
+    commitment: blst::blst_p1,
+}
+
+impl Serialize for PolynomialCommitment {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("PolynomialCommitment", 2)?;
+
+        state.serialize_field("coefficients", &self.coefficients)?;
+
+        let mut compressed_commitment = [0; 48];
+        unsafe {
+            blst::blst_p1_compress(compressed_commitment.as_mut_ptr(), &self.commitment);
+        };
+        state.serialize_field("commitment", &compressed_commitment[..])?;
+
+        state.end()
+    }
+}
+
+fn blst_scalar_from_u8(a: u8) -> blst::blst_scalar {
+    let mut le_bytes = [0; 48];
+    le_bytes[0] = a;
+    let mut scalar = blst::blst_scalar::default();
+    unsafe { blst::blst_scalar_from_le_bytes(&mut scalar, le_bytes.as_ptr(), le_bytes.len()) };
+    scalar
+}
+
 #[cfg(test)]
 mod tests {
     use rand::RngCore;
 
-    use super::trusted_setup::SetupArtifactsGenerator;
+    use super::{blst_scalar_from_u8, trusted_setup::SetupArtifactsGenerator};
 
     #[test]
     fn test_point_addition_and_scalar_multiplication() {
@@ -237,14 +339,6 @@ mod tests {
             blst::blst_p2_add_or_double(&mut out, a, &neg_b);
         };
         out
-    }
-
-    fn blst_scalar_from_u8(a: u8) -> blst::blst_scalar {
-        let mut le_bytes = [0; 48];
-        le_bytes[0] = a;
-        let mut scalar = blst::blst_scalar::default();
-        unsafe { blst::blst_scalar_from_le_bytes(&mut scalar, le_bytes.as_ptr(), le_bytes.len()) };
-        scalar
     }
 
     #[test]
