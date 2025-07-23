@@ -241,7 +241,7 @@ fn test_commitment_for_polynomial_degree_one() {
 I want to add a new command in order to execute the trusted setup ceremony, it will look a bit like what has been done in the tests in my previous step but in a more constructed way:
 - a random field element `s` is generated,
 - the `s` is used in order to generate the points `s^k & G, k = 0 .. N` on the two elliptic curves using their generator `G`,
-- the points are written in a file `./artifacts/setup.json`.
+- the points are serialized in JSON format in a file `./artifacts/setup.json`. Serialization is made using [serde](https://serde.rs/).
 
 > [!CAUTION]
 > Do not use this setup for any production use, it is made for testing purpose only.
