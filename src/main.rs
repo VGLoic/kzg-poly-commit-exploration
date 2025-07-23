@@ -22,12 +22,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Perform a trusted setup ceremony.
-    /// The generated artifacts are written in `./artifacts/setup.txt`.
-    /// The artifacts are generated up until the degree 9.
+    /// Perform a trusted setup ceremony and write the artifacts in './artifacts/setup.json'. Artifacts are genetated until degree 9.
     TrustedSetup {},
-    /// Print "Hello, world!"
-    HelloWorld {},
 }
 
 fn main() {
@@ -85,7 +81,7 @@ impl Commands {
                 log::info!("Starting the trusted setup ceremony");
 
                 let artifacts_folder_path = "./artifacts";
-                let setup_artifacts_path = format!("{artifacts_folder_path}/setup.txt");
+                let setup_artifacts_path = format!("{artifacts_folder_path}/setup.json");
                 if !fs::exists(artifacts_folder_path)? {
                     fs::create_dir(artifacts_folder_path)?;
                 }
@@ -112,10 +108,6 @@ impl Commands {
                     "Trusted setup ceremony successfully performed. Artifacts have been written in \"{setup_artifacts_path}\""
                 );
 
-                Ok(())
-            }
-            Commands::HelloWorld {} => {
-                log::info!("Hello, world!");
                 Ok(())
             }
         }
