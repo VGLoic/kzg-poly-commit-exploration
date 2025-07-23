@@ -241,7 +241,7 @@ fn test_commitment_for_polynomial_degree_one() {
 I want to add a new command in order to execute the trusted setup ceremony, it will look a bit like what has been done in the tests in my previous step but in a more constructed way:
 - a random field element `s` is generated,
 - the `s` is used in order to generate the points `s^k & G, k = 0 .. N` on the two elliptic curves using their generator `G`,
-- the points are serialized in JSON format in a file `./artifacts/setup.json`. Serialization is made using [serde](https://serde.rs/).
+- the points are serialized in JSON format in a file `./artifacts/setup.json`.
 
 > [!CAUTION]
 > Do not use this setup for any production use, it is made for testing purpose only.
@@ -249,6 +249,9 @@ I want to add a new command in order to execute the trusted setup ceremony, it w
 As requested per the trusted setup ceremony, the secret `s` is contained in the command only and is not written in the artifacts, it disappears once the command is executed. We only end up with the public points on the two curves but `s` is not recoverable.
 
 The generation of `s` is simply made using a basic `fill_bytes` with the default `rng` of the [rand crate](https://docs.rs/rand/latest/rand/), it is perfectly fine for this test use case but it would require special attention for a more serious usage. Furthermore, this kind of ceremony is generally not done with a single actor but performed using multi party computation with many actors. Vitalik Buterin has an [article about this](https://vitalik.eth.limo/general/2022/03/14/trustedsetup.html) that I have not read yet.
+
+> [!NOTE]
+> Serialization is made using [serde](https://serde.rs/). The serialization is implemented by first compressing the group element and then serializing the byte array. Deserialization is implemented using the other way around.
 
 ## Repository setup
 
