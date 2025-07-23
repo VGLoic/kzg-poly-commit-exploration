@@ -14,7 +14,7 @@ pub struct SetupArtifactsGenerator {
 
 impl SetupArtifactsGenerator {
     /// Creates a new generator for trusted setup artifacts
-    /// 
+    ///
     /// * `secret` - Secret in order to generate artifacts, in big endian bytes
     pub fn new(secret: [u8; 48]) -> Self {
         Self {
