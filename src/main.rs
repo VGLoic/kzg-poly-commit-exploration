@@ -92,7 +92,7 @@ impl Commands {
                 const MAX_DEGREE: u8 = 9;
 
                 let setup_artifacts: Vec<_> =
-                    trusted_setup::SetupArtifactsGenerator::build(s_be_bytes)
+                    trusted_setup::SetupArtifactsGenerator::new(s_be_bytes)
                         .take(usize::from(MAX_DEGREE))
                         .collect();
 
@@ -251,7 +251,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_bytes).take(2).collect();
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
         // a1 = 5, a0 = 10`
@@ -319,7 +319,7 @@ mod tests {
     fn test_commitment_for_polynomial_degree_two() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::build(s_bytes).take(3).collect();
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
         // a2 = 2, a1 = 3, a0 = 4

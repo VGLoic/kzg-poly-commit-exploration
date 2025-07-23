@@ -13,7 +13,10 @@ pub struct SetupArtifactsGenerator {
 }
 
 impl SetupArtifactsGenerator {
-    pub fn build(secret: [u8; 48]) -> Self {
+    /// Creates a new generator for trusted setup artifacts
+    /// 
+    /// * `secret` - Secret in order to generate artifacts, in big endian bytes
+    pub fn new(secret: [u8; 48]) -> Self {
         Self {
             secret: BigUint::from_bytes_be(&secret),
             is_at_power_zero: true,
