@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use rand::RngCore;
-use serde::{Serialize, ser::SerializeStruct};
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::{BufReader, Write},
@@ -8,6 +8,10 @@ use std::{
 };
 use thiserror::Error;
 
+use crate::{curves::G1Point, polynomial::Polynomial};
+
+mod curves;
+mod polynomial;
 mod trusted_setup;
 
 #[derive(Parser)]
@@ -23,10 +27,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Perform a trusted setup ceremony and write the artifacts in './artifacts/setup.json'. Artifacts are genetated until degree 9.
+    /// Perform a trusted setup ceremony and write the artifacts in './artifacts/setup.json'.
+    ///
+    /// Artifacts are genetated until degree 9.
     TrustedSetup {},
     /// Commit to a polynomial using the trusted setup artifacts
-    Commit {},
+    Commit {
+        /// Coefficients of the polynomial in ascending order, starting from the order zero.
+        ///
+        /// Order up to 9 is supported.
+        #[arg(long_help, num_args = 1..)]
+        coefficients: Vec<i8>,
+    },
 }
 
 fn main() {
@@ -81,6 +93,8 @@ const ARTIFACTS_FOLDER_PATH: &str = "./artifacts";
 const SETUP_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/setup.json";
 const COMMITMENT_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/commitment.json";
 
+const MAX_DEGREE: u8 = 9;
+
 impl Commands {
     fn run(&self) -> Result<(), CliError> {
         match &self {
@@ -98,8 +112,6 @@ impl Commands {
                 let mut s_be_bytes = [0; 48];
                 rand::rng().fill_bytes(&mut s_be_bytes);
 
-                const MAX_DEGREE: u8 = 9;
-
                 let setup_artifacts: Vec<_> =
                     trusted_setup::SetupArtifactsGenerator::new(s_be_bytes)
                         .take(usize::from(MAX_DEGREE))
@@ -116,8 +128,16 @@ impl Commands {
 
                 Ok(())
             }
-            Commands::Commit {} => {
-                log::info!("Starting to commit to the polynomial P(x) = 5x + 3");
+            Commands::Commit { coefficients } => {
+                let polynomial = polynomial::Polynomial::from(coefficients.as_slice());
+
+                if polynomial.order() > usize::from(MAX_DEGREE) {
+                    return Err(
+                        anyhow::anyhow!("Only polynomials up to 9 decimals are supported").into(),
+                    );
+                }
+
+                log::info!("Starting to commit to the polynomial P(x) = {polynomial}");
 
                 if !fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
                     return Err(anyhow::anyhow!(
@@ -132,34 +152,10 @@ impl Commands {
                 let setup_artifacts: Vec<trusted_setup::SetupArtifact> =
                     serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
 
-                let a0 = blst_scalar_from_u8(3);
-                let mut constant_part = blst::blst_p1::default();
-                unsafe {
-                    blst::blst_p1_mult(
-                        &mut constant_part,
-                        blst::blst_p1_generator(),
-                        a0.b.as_ptr(),
-                        a0.b.len() * 8,
-                    );
-                };
+                let commitment = polynomial.commit(&setup_artifacts)?;
 
-                let a1 = blst_scalar_from_u8(5);
-                let mut order_one_part = blst::blst_p1::default();
-                unsafe {
-                    blst::blst_p1_mult(
-                        &mut order_one_part,
-                        &setup_artifacts[1].g1,
-                        a1.b.as_ptr(),
-                        a1.b.len() * 8,
-                    );
-                };
-                let mut commitment = blst::blst_p1::default();
-                unsafe {
-                    blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
-                };
-
-                let stringified_commitment = serde_json::to_string(&PolynomialCommitment {
-                    coefficients: vec![3, 5],
+                let commitment_artifact = serde_json::to_string(&CommitmentArtifact {
+                    polynomial,
                     commitment,
                 })
                 .map_err(anyhow::Error::from)?;
@@ -168,7 +164,7 @@ impl Commands {
                     fs::remove_file(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
                 }
                 let mut file = fs::File::create(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
-                file.write_all(stringified_commitment.as_bytes())?;
+                file.write_all(commitment_artifact.as_bytes())?;
 
                 log::info!(
                     "Commitment to the polynomial \"P(x) = 5x + 3\" has been successfully generated."
@@ -180,44 +176,19 @@ impl Commands {
     }
 }
 
-#[derive(Debug)]
-struct PolynomialCommitment {
-    coefficients: Vec<u8>,
-    commitment: blst::blst_p1,
-}
-
-impl Serialize for PolynomialCommitment {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("PolynomialCommitment", 2)?;
-
-        state.serialize_field("coefficients", &self.coefficients)?;
-
-        let mut compressed_commitment = [0; 48];
-        unsafe {
-            blst::blst_p1_compress(compressed_commitment.as_mut_ptr(), &self.commitment);
-        };
-        state.serialize_field("commitment", &compressed_commitment[..])?;
-
-        state.end()
-    }
-}
-
-fn blst_scalar_from_u8(a: u8) -> blst::blst_scalar {
-    let mut le_bytes = [0; 48];
-    le_bytes[0] = a;
-    let mut scalar = blst::blst_scalar::default();
-    unsafe { blst::blst_scalar_from_le_bytes(&mut scalar, le_bytes.as_ptr(), le_bytes.len()) };
-    scalar
+#[derive(Debug, Serialize, Deserialize)]
+struct CommitmentArtifact {
+    polynomial: Polynomial,
+    commitment: G1Point,
 }
 
 #[cfg(test)]
 mod tests {
     use rand::RngCore;
 
-    use super::{blst_scalar_from_u8, trusted_setup::SetupArtifactsGenerator};
+    use crate::polynomial::{Polynomial, blst_scalar_from_u8};
+
+    use super::trusted_setup::SetupArtifactsGenerator;
 
     #[test]
     fn test_point_addition_and_scalar_multiplication() {
@@ -348,32 +319,8 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
-        // a1 = 5, a0 = 10`
-        let a0 = blst_scalar_from_u8(10);
-        let mut constant_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut constant_part,
-                blst::blst_p1_generator(),
-                a0.b.as_ptr(),
-                a0.b.len() * 8,
-            );
-        };
-
-        let a1 = blst_scalar_from_u8(5);
-        let mut order_one_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut order_one_part,
-                &setup_artifacts[1].g1,
-                a1.b.as_ptr(),
-                a1.b.len() * 8,
-            );
-        };
-        let mut commitment = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
-        };
+        let polynomial = Polynomial::from([10, 5].as_slice());
+        let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
@@ -416,42 +363,8 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
-        // a2 = 2, a1 = 3, a0 = 4
-        let a0 = blst_scalar_from_u8(4);
-        let mut constant_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut constant_part,
-                blst::blst_p1_generator(),
-                a0.b.as_ptr(),
-                a0.b.len() * 8,
-            );
-        };
-        let a1 = blst_scalar_from_u8(3);
-        let mut order_one_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut order_one_part,
-                &setup_artifacts[1].g1,
-                a1.b.as_ptr(),
-                a1.b.len() * 8,
-            );
-        };
-        let a2 = blst_scalar_from_u8(2);
-        let mut order_two_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut order_two_part,
-                &setup_artifacts[2].g1,
-                a2.b.as_ptr(),
-                a2.b.len() * 8,
-            );
-        };
-        let mut commitment = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
-            blst::blst_p1_add_or_double(&mut commitment, &commitment, &order_two_part);
-        };
+        let polynomial = Polynomial::from([4, 3, 2].as_slice());
+        let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
@@ -471,7 +384,7 @@ mod tests {
         unsafe {
             blst::blst_p1_mult(
                 &mut q_at_s_order_one_part,
-                &setup_artifacts[1].g1,
+                setup_artifacts[1].g1.as_raw_ptr(),
                 b1.b.as_ptr(),
                 b1.b.len() * 8,
             );
