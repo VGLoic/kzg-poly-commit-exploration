@@ -114,7 +114,7 @@ impl Commands {
 
                 let setup_artifacts: Vec<_> =
                     trusted_setup::SetupArtifactsGenerator::new(s_be_bytes)
-                        .take(usize::from(MAX_DEGREE))
+                        .take(usize::from(MAX_DEGREE + 1))
                         .collect();
 
                 let stringified_artifacts =
