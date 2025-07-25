@@ -11,8 +11,7 @@ pub struct Polynomial {
 
 impl From<&[i8]> for Polynomial {
     fn from(value: &[i8]) -> Self {
-        let mut coefficients = vec![0; value.len()];
-        coefficients.clone_from_slice(value);
+        let mut coefficients = value.to_vec();
 
         while let Some(last_value) = coefficients.last()
             && *last_value == 0
