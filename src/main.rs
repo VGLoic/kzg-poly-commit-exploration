@@ -139,7 +139,9 @@ impl Commands {
                     );
                 }
 
-                log::info!("Starting to commit to the polynomial P(x) = \"{polynomial_displayed}\"");
+                log::info!(
+                    "Starting to commit to the polynomial P(x) = \"{polynomial_displayed}\""
+                );
 
                 if !fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
                     return Err(anyhow::anyhow!(
