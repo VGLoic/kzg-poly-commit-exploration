@@ -131,13 +131,15 @@ impl Commands {
             Commands::Commit { coefficients } => {
                 let polynomial = polynomial::Polynomial::from(coefficients.as_slice());
 
+                let polynomial_displayed = polynomial.to_string();
+
                 if polynomial.order() > usize::from(MAX_DEGREE) {
                     return Err(
                         anyhow::anyhow!("Only polynomials up to 9 decimals are supported").into(),
                     );
                 }
 
-                log::info!("Starting to commit to the polynomial P(x) = {polynomial}");
+                log::info!("Starting to commit to the polynomial P(x) = \"{polynomial_displayed}\"");
 
                 if !fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
                     return Err(anyhow::anyhow!(
@@ -167,7 +169,7 @@ impl Commands {
                 file.write_all(commitment_artifact.as_bytes())?;
 
                 log::info!(
-                    "Commitment to the polynomial \"P(x) = 5x + 3\" has been successfully generated."
+                    "Commitment to the polynomial \"P(x) = {polynomial_displayed}\" has been successfully generated."
                 );
 
                 Ok(())
