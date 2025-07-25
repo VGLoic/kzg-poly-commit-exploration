@@ -37,7 +37,7 @@ impl Polynomial {
 
         let mut commitment = blst::blst_p1::default();
         for (i, coefficient) in self.coefficients.iter().enumerate() {
-            let coefficient_as_scalar = blst_scalar_from_u8(coefficient.unsigned_abs());
+            let coefficient_as_scalar = blst_scalar_from_i8_as_abs(*coefficient);
             let setup_point = &setup_artifacts[i].g1;
 
             let mut contribution = blst::blst_p1::default();
@@ -63,10 +63,10 @@ impl Polynomial {
     }
 }
 
-pub fn blst_scalar_from_u8(a: u8) -> blst::blst_scalar {
+pub fn blst_scalar_from_i8_as_abs(a: i8) -> blst::blst_scalar {
     let mut le_bytes = [0; 48];
-    le_bytes[0] = a;
-    let mut scalar = blst::blst_scalar::default();
+    le_bytes[0] = a.unsigned_abs();
+    let mut scalar: blst::blst_scalar = blst::blst_scalar::default();
     unsafe { blst::blst_scalar_from_le_bytes(&mut scalar, le_bytes.as_ptr(), le_bytes.len()) };
     scalar
 }
