@@ -102,7 +102,7 @@ impl Commands {
                 log::info!("Starting the trusted setup ceremony");
 
                 if !fs::exists(ARTIFACTS_FOLDER_PATH)? {
-                    fs::create_dir(SETUP_ARTIFACTS_FOLDER_PATH)?;
+                    fs::create_dir(ARTIFACTS_FOLDER_PATH)?;
                 }
                 if fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
                     fs::remove_file(SETUP_ARTIFACTS_FOLDER_PATH)?;
@@ -135,7 +135,7 @@ impl Commands {
 
                 if polynomial.order() > usize::from(MAX_DEGREE) {
                     return Err(
-                        anyhow::anyhow!("Only polynomials up to 9 decimals are supported").into(),
+                        anyhow::anyhow!("Only polynomials up to order 9 are supported").into(),
                     );
                 }
 
