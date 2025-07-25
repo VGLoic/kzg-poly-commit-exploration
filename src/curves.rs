@@ -217,6 +217,6 @@ impl<'de> Deserialize<'de> for G2Point {
             }
         }
 
-        deserializer.deserialize_bytes(G2PointVisitor)
+        deserializer.deserialize_seq(G2PointVisitor)
     }
 }
