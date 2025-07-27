@@ -25,6 +25,9 @@ impl From<&[i8]> for Polynomial {
 
 impl Polynomial {
     pub fn degree(&self) -> usize {
+        if self.coefficients.is_empty() {
+            return 0;
+        }
         self.coefficients.len() - 1
     }
 
