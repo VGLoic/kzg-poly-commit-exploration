@@ -1,8 +1,17 @@
 use clap::{Parser, Subcommand};
 use rand::RngCore;
-use std::{fs, io::Write, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    io::{BufReader, Write},
+    str::FromStr,
+};
 use thiserror::Error;
 
+use crate::{curves::G1Point, polynomial::Polynomial};
+
+mod curves;
+mod polynomial;
 mod trusted_setup;
 
 #[derive(Parser)]
@@ -18,8 +27,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Perform a trusted setup ceremony and write the artifacts in './artifacts/setup.json'. Artifacts are genetated until degree 9.
+    /// Perform a trusted setup ceremony and write the artifacts in './artifacts/setup.json'.
+    ///
+    /// Artifacts are genetated until degree 9.
     TrustedSetup {},
+    /// Commit to a polynomial using the trusted setup artifacts
+    Commit {
+        /// Coefficients of the polynomial in ascending degree, starting from the degree zero.
+        ///
+        /// Degree up to 9 is supported.
+        #[arg(long_help, num_args = 1..)]
+        coefficients: Vec<i8>,
+    },
 }
 
 fn main() {
@@ -70,30 +89,32 @@ impl From<std::io::Error> for CliError {
     }
 }
 
+const ARTIFACTS_FOLDER_PATH: &str = "./artifacts";
+const SETUP_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/setup.json";
+const COMMITMENT_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/commitment.json";
+
+const MAX_DEGREE: u8 = 9;
+
 impl Commands {
     fn run(&self) -> Result<(), CliError> {
         match &self {
             Commands::TrustedSetup {} => {
                 log::info!("Starting the trusted setup ceremony");
 
-                let artifacts_folder_path = "./artifacts";
-                let setup_artifacts_path = format!("{artifacts_folder_path}/setup.json");
-                if !fs::exists(artifacts_folder_path)? {
-                    fs::create_dir(artifacts_folder_path)?;
+                if !fs::exists(ARTIFACTS_FOLDER_PATH)? {
+                    fs::create_dir(ARTIFACTS_FOLDER_PATH)?;
                 }
-                if fs::exists(&setup_artifacts_path)? {
-                    fs::remove_file(&setup_artifacts_path)?;
+                if fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
+                    fs::remove_file(SETUP_ARTIFACTS_FOLDER_PATH)?;
                 }
-                let mut file = fs::File::create(&setup_artifacts_path)?;
+                let mut file = fs::File::create(SETUP_ARTIFACTS_FOLDER_PATH)?;
 
                 let mut s_be_bytes = [0; 48];
                 rand::rng().fill_bytes(&mut s_be_bytes);
 
-                const MAX_DEGREE: u8 = 9;
-
                 let setup_artifacts: Vec<_> =
                     trusted_setup::SetupArtifactsGenerator::new(s_be_bytes)
-                        .take(usize::from(MAX_DEGREE))
+                        .take(usize::from(MAX_DEGREE + 1))
                         .collect();
 
                 let stringified_artifacts =
@@ -102,7 +123,55 @@ impl Commands {
                 file.write_all(stringified_artifacts.as_bytes())?;
 
                 log::info!(
-                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{setup_artifacts_path}\""
+                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{SETUP_ARTIFACTS_FOLDER_PATH}\""
+                );
+
+                Ok(())
+            }
+            Commands::Commit { coefficients } => {
+                let polynomial = polynomial::Polynomial::from(coefficients.as_slice());
+
+                let polynomial_displayed = polynomial.to_string();
+
+                if polynomial.degree() > usize::from(MAX_DEGREE) {
+                    return Err(
+                        anyhow::anyhow!("Only polynomials up to degree 9 are supported").into(),
+                    );
+                }
+
+                log::info!(
+                    "Starting to commit to the polynomial P(x) = \"{polynomial_displayed}\""
+                );
+
+                if !fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Trusted setup artifacts have not been found, generate them beforehand."
+                    )
+                    .into());
+                }
+
+                let file = fs::File::open(SETUP_ARTIFACTS_FOLDER_PATH)?;
+                let reader = BufReader::new(file);
+
+                let setup_artifacts: Vec<trusted_setup::SetupArtifact> =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                let commitment = polynomial.commit(&setup_artifacts)?;
+
+                let commitment_artifact = serde_json::to_string(&CommitmentArtifact {
+                    polynomial,
+                    commitment,
+                })
+                .map_err(anyhow::Error::from)?;
+
+                if fs::exists(COMMITMENT_ARTIFACTS_FOLDER_PATH)? {
+                    fs::remove_file(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                }
+                let mut file = fs::File::create(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                file.write_all(commitment_artifact.as_bytes())?;
+
+                log::info!(
+                    "Commitment to the polynomial \"P(x) = {polynomial_displayed}\" has been successfully generated."
                 );
 
                 Ok(())
@@ -111,9 +180,17 @@ impl Commands {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CommitmentArtifact {
+    polynomial: Polynomial,
+    commitment: G1Point,
+}
+
 #[cfg(test)]
 mod tests {
     use rand::RngCore;
+
+    use crate::polynomial::{Polynomial, blst_scalar_from_i8_as_abs};
 
     use super::trusted_setup::SetupArtifactsGenerator;
 
@@ -239,14 +316,6 @@ mod tests {
         out
     }
 
-    fn blst_scalar_from_u8(a: u8) -> blst::blst_scalar {
-        let mut le_bytes = [0; 48];
-        le_bytes[0] = a;
-        let mut scalar = blst::blst_scalar::default();
-        unsafe { blst::blst_scalar_from_le_bytes(&mut scalar, le_bytes.as_ptr(), le_bytes.len()) };
-        scalar
-    }
-
     #[test]
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
@@ -254,36 +323,12 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
-        // a1 = 5, a0 = 10`
-        let a0 = blst_scalar_from_u8(10);
-        let mut constant_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut constant_part,
-                blst::blst_p1_generator(),
-                a0.b.as_ptr(),
-                a0.b.len() * 8,
-            );
-        };
-
-        let a1 = blst_scalar_from_u8(5);
-        let mut order_one_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut order_one_part,
-                &setup_artifacts[1].g1,
-                a1.b.as_ptr(),
-                a1.b.len() * 8,
-            );
-        };
-        let mut commitment = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
-        };
+        let polynomial = Polynomial::from([10, 5].as_slice());
+        let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
-        let q_as_scalar = blst_scalar_from_u8(5);
+        let q_as_scalar = blst_scalar_from_i8_as_abs(5);
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
@@ -298,7 +343,7 @@ mod tests {
         let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
-        let y_as_scalar = blst_scalar_from_u8(15);
+        let y_as_scalar = blst_scalar_from_i8_as_abs(15);
         let mut y = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
@@ -322,47 +367,13 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
-        // a2 = 2, a1 = 3, a0 = 4
-        let a0 = blst_scalar_from_u8(4);
-        let mut constant_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut constant_part,
-                blst::blst_p1_generator(),
-                a0.b.as_ptr(),
-                a0.b.len() * 8,
-            );
-        };
-        let a1 = blst_scalar_from_u8(3);
-        let mut order_one_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut order_one_part,
-                &setup_artifacts[1].g1,
-                a1.b.as_ptr(),
-                a1.b.len() * 8,
-            );
-        };
-        let a2 = blst_scalar_from_u8(2);
-        let mut order_two_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut order_two_part,
-                &setup_artifacts[2].g1,
-                a2.b.as_ptr(),
-                a2.b.len() * 8,
-            );
-        };
-        let mut commitment = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
-            blst::blst_p1_add_or_double(&mut commitment, &commitment, &order_two_part);
-        };
+        let polynomial = Polynomial::from([4, 3, 2].as_slice());
+        let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
         // b1 = 2, b0 = 7
-        let b0 = blst_scalar_from_u8(7);
+        let b0 = blst_scalar_from_i8_as_abs(7);
         let mut q_at_s_constant_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
@@ -372,22 +383,26 @@ mod tests {
                 b0.b.len() * 8,
             );
         };
-        let b1 = blst_scalar_from_u8(2);
-        let mut q_at_s_order_one_part = blst::blst_p1::default();
+        let b1 = blst_scalar_from_i8_as_abs(2);
+        let mut q_at_s_degree_one_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
-                &mut q_at_s_order_one_part,
-                &setup_artifacts[1].g1,
+                &mut q_at_s_degree_one_part,
+                setup_artifacts[1].g1.as_raw_ptr(),
                 b1.b.as_ptr(),
                 b1.b.len() * 8,
             );
         };
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_order_one_part);
+            blst::blst_p1_add_or_double(
+                &mut q_at_s,
+                &q_at_s_constant_part,
+                &q_at_s_degree_one_part,
+            );
         }
 
-        let z_as_scalar = blst_scalar_from_u8(2);
+        let z_as_scalar = blst_scalar_from_i8_as_abs(2);
         let mut z = blst::blst_p2::default();
         unsafe {
             blst::blst_p2_mult(
@@ -400,7 +415,79 @@ mod tests {
         let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
         let lhs = bilinear_map(&q_at_s, &divider);
 
-        let y_as_scalar = blst_scalar_from_u8(18);
+        let y_as_scalar = blst_scalar_from_i8_as_abs(18);
+        let mut y = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut y,
+                blst::blst_p1_generator(),
+                y_as_scalar.b.as_ptr(),
+                y_as_scalar.b.len() * 8,
+            );
+        };
+        let commitment_part = blst_p1_sub(&commitment, &y);
+        let g2 = unsafe { *blst::blst_p2_generator() };
+        let rhs = bilinear_map(&commitment_part, &g2);
+
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn test_commitment_for_polynomial_degree_two_with_negative_coefficients() {
+        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
+        rand::rng().fill_bytes(&mut s_bytes);
+        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
+
+        // Polynomial to commit is `p(x) = 2x^2 - 3x - 1`
+        let polynomial = Polynomial::from([-1, -3, 2].as_slice());
+        let commitment = polynomial.commit(&setup_artifacts).unwrap();
+
+        // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 - 6 - 1 = 1`
+        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 - 3x - 2) / (x - 2) = (x - 2) * (2x + 1) / (x - 2) = 2x + 1`
+        // b1 = 2, b0 = 1
+        let b0 = blst_scalar_from_i8_as_abs(1);
+        let mut q_at_s_constant_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut q_at_s_constant_part,
+                blst::blst_p1_generator(),
+                b0.b.as_ptr(),
+                b0.b.len() * 8,
+            );
+        };
+        let b1 = blst_scalar_from_i8_as_abs(2);
+        let mut q_at_s_degree_one_part = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut q_at_s_degree_one_part,
+                setup_artifacts[1].g1.as_raw_ptr(),
+                b1.b.as_ptr(),
+                b1.b.len() * 8,
+            );
+        };
+        let mut q_at_s = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_add_or_double(
+                &mut q_at_s,
+                &q_at_s_constant_part,
+                &q_at_s_degree_one_part,
+            );
+        }
+
+        let z_as_scalar = blst_scalar_from_i8_as_abs(2);
+        let mut z = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(
+                &mut z,
+                blst::blst_p2_generator(),
+                z_as_scalar.b.as_ptr(),
+                z_as_scalar.b.len() * 8,
+            );
+        }
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
+        let lhs = bilinear_map(&q_at_s, &divider);
+
+        let y_as_scalar = blst_scalar_from_i8_as_abs(1);
         let mut y = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(

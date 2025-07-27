@@ -137,7 +137,7 @@ mod tests {
 
 #### Digging until I got tests for polynomial commitments
 
-I wanted to write my trusted setup script but I liked my first approach with test. So I took the time to write two more tests for polynomial commitments without smart things and with simple polynomials. I did one test for order 1 polynomial, the other is for order 2 polynomial. The approach is the same in both tests:
+I wanted to write my trusted setup script but I liked my first approach with test. So I took the time to write two more tests for polynomial commitments without smart things and with simple polynomials. I did one test for degree 1 polynomial, the other is for degree 2 polynomial. The approach is the same in both tests:
 1. start by generating a secret,
 2. the secret is used in order to compute the multiple of the generators of the first and second group,
 3. use these quantities in order to compute the polynomial commitment,
@@ -148,7 +148,7 @@ I wanted to write my trusted setup script but I liked my first approach with tes
 
 Not gonna lie, it took me some time to make it work. I discovered a lot about bytes in general, in particular the difference between [little endian and big endian](https://www.techtarget.com/searchnetworking/definition/big-endian-and-little-endian). There are still some things that are not perfectly clear for me, like the `scalar` type of the `blst` crate, I will try to understand it a bit better. However, it allowed me to illustrate concretely the KZG polynomial commitment process and I'm quite happy to have this working.
 
-Here is the test made for the order one polynomial:
+Here is the test made for the degree one polynomial:
 ```rust
 #[test]
 fn test_commitment_for_polynomial_degree_one() {
@@ -192,13 +192,13 @@ fn test_commitment_for_polynomial_degree_one() {
     };
 
     let a1 = blst_scalar_from_u8(5);
-    let mut order_one_part = blst::blst_p1::default();
+    let mut degree_one_part = blst::blst_p1::default();
     unsafe {
-        blst::blst_p1_mult(&mut order_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
+        blst::blst_p1_mult(&mut degree_one_part, &s_g1, a1.b.as_ptr(), a1.b.len() * 8);
     };
     let mut commitment = blst::blst_p1::default();
     unsafe {
-        blst::blst_p1_add_or_double(&mut commitment, &constant_part, &order_one_part);
+        blst::blst_p1_add_or_double(&mut commitment, &constant_part, &degree_one_part);
     };
 
     // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
@@ -252,6 +252,13 @@ The generation of `s` is simply made using a basic `fill_bytes` with the default
 
 > [!NOTE]
 > Serialization is made using [serde](https://serde.rs/). The serialization is implemented by first compressing the group element and then serializing the byte array. Deserialization is implemented using the other way around.
+
+### Polynomial commitment
+
+Now that we have the artifacts of the trusted setup, we can implement the commitment part. The plan will be to add a new command such that:
+- it receives as input the polynomial coefficients,
+- it retrieves the trusted setup artifacts,
+- it computes the polynomial commitment and generate a new artifact with the polynomial and the associated commitment.
 
 ## Repository setup
 

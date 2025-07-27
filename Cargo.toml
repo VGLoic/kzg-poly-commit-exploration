@@ -2,6 +2,8 @@
 name = "kzg_poly_commit_exploration"
 version = "0.1.0"
 edition = "2024"
+description = "A command line parser in order to play with KZG polynomial commitment"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.98"
