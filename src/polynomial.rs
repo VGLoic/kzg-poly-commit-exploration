@@ -24,14 +24,14 @@ impl From<&[i8]> for Polynomial {
 }
 
 impl Polynomial {
-    pub fn order(&self) -> usize {
-        self.coefficients.len()
+    pub fn degree(&self) -> usize {
+        self.coefficients.len() - 1
     }
 
     pub fn commit(&self, setup_artifacts: &[SetupArtifact]) -> Result<G1Point, anyhow::Error> {
-        if self.order() > setup_artifacts.len() {
+        if self.degree() + 1 > setup_artifacts.len() {
             return Err(anyhow::anyhow!(
-                "Setup does not allow for commitment generation of the polynomial. The polynomial order is too high."
+                "Setup does not allow for commitment generation of the polynomial. The polynomial degree is too high."
             ));
         }
 
@@ -77,15 +77,15 @@ impl std::fmt::Display for Polynomial {
             return write!(f, "0");
         }
 
-        let higher_order_coefficient = self.coefficients[self.coefficients.len() - 1];
+        let higher_degree_coefficient = self.coefficients[self.coefficients.len() - 1];
         let mut displayed = format!(
             "{}{}",
-            if higher_order_coefficient < 0 {
+            if higher_degree_coefficient < 0 {
                 "-"
             } else {
                 ""
             },
-            display_non_zero_coefficient(higher_order_coefficient, self.coefficients.len() - 1)
+            display_non_zero_coefficient(higher_degree_coefficient, self.coefficients.len() - 1)
         );
 
         for i in (0..(self.coefficients.len() - 1)).rev() {
@@ -105,14 +105,14 @@ impl std::fmt::Display for Polynomial {
     }
 }
 
-fn display_non_zero_coefficient(c: i8, order: usize) -> String {
-    let order_string = match order {
+fn display_non_zero_coefficient(c: i8, degree: usize) -> String {
+    let degree_string = match degree {
         0 => "".to_owned(),
         1 => "x".to_owned(),
         other => format!("x^{other}"),
     };
-    if order > 0 && (c == 1 || c == -1) {
-        return order_string;
+    if degree > 0 && (c == 1 || c == -1) {
+        return degree_string;
     }
-    format!("{}{order_string}", c.abs())
+    format!("{}{degree_string}", c.abs())
 }

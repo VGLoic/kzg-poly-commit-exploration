@@ -33,9 +33,9 @@ enum Commands {
     TrustedSetup {},
     /// Commit to a polynomial using the trusted setup artifacts
     Commit {
-        /// Coefficients of the polynomial in ascending order, starting from the order zero.
+        /// Coefficients of the polynomial in ascending degree, starting from the degree zero.
         ///
-        /// Order up to 9 is supported.
+        /// Degree up to 9 is supported.
         #[arg(long_help, num_args = 1..)]
         coefficients: Vec<i8>,
     },
@@ -133,9 +133,9 @@ impl Commands {
 
                 let polynomial_displayed = polynomial.to_string();
 
-                if polynomial.order() > usize::from(MAX_DEGREE) {
+                if polynomial.degree() > usize::from(MAX_DEGREE) {
                     return Err(
-                        anyhow::anyhow!("Only polynomials up to order 9 are supported").into(),
+                        anyhow::anyhow!("Only polynomials up to degree 9 are supported").into(),
                     );
                 }
 
@@ -384,10 +384,10 @@ mod tests {
             );
         };
         let b1 = blst_scalar_from_i8_as_abs(2);
-        let mut q_at_s_order_one_part = blst::blst_p1::default();
+        let mut q_at_s_degree_one_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
-                &mut q_at_s_order_one_part,
+                &mut q_at_s_degree_one_part,
                 setup_artifacts[1].g1.as_raw_ptr(),
                 b1.b.as_ptr(),
                 b1.b.len() * 8,
@@ -395,7 +395,7 @@ mod tests {
         };
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_order_one_part);
+            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_degree_one_part);
         }
 
         let z_as_scalar = blst_scalar_from_i8_as_abs(2);
@@ -452,10 +452,10 @@ mod tests {
             );
         };
         let b1 = blst_scalar_from_i8_as_abs(2);
-        let mut q_at_s_order_one_part = blst::blst_p1::default();
+        let mut q_at_s_degree_one_part = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
-                &mut q_at_s_order_one_part,
+                &mut q_at_s_degree_one_part,
                 setup_artifacts[1].g1.as_raw_ptr(),
                 b1.b.as_ptr(),
                 b1.b.len() * 8,
@@ -463,7 +463,7 @@ mod tests {
         };
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_order_one_part);
+            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_degree_one_part);
         }
 
         let z_as_scalar = blst_scalar_from_i8_as_abs(2);
