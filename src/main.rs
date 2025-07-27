@@ -395,7 +395,11 @@ mod tests {
         };
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_degree_one_part);
+            blst::blst_p1_add_or_double(
+                &mut q_at_s,
+                &q_at_s_constant_part,
+                &q_at_s_degree_one_part,
+            );
         }
 
         let z_as_scalar = blst_scalar_from_i8_as_abs(2);
@@ -463,7 +467,11 @@ mod tests {
         };
         let mut q_at_s = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_add_or_double(&mut q_at_s, &q_at_s_constant_part, &q_at_s_degree_one_part);
+            blst::blst_p1_add_or_double(
+                &mut q_at_s,
+                &q_at_s_constant_part,
+                &q_at_s_degree_one_part,
+            );
         }
 
         let z_as_scalar = blst_scalar_from_i8_as_abs(2);
