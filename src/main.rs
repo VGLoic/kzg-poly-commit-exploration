@@ -96,8 +96,9 @@ impl From<std::io::Error> for CliError {
 }
 
 const ARTIFACTS_FOLDER_PATH: &str = "./artifacts";
-const SETUP_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/setup.json";
-const COMMITMENT_ARTIFACTS_FOLDER_PATH: &str = "./artifacts/commitment.json";
+const SETUP_ARTIFACTS_PATH: &str = "./artifacts/setup.json";
+const COMMITMENT_ARTIFACTS_PATH: &str = "./artifacts/commitment.json";
+const EVALUATION_ARTIFACTS_PATH: &str = "./artifacts/evaluation.json";
 
 const MAX_DEGREE: u8 = 9;
 
@@ -110,10 +111,10 @@ impl Commands {
                 if !fs::exists(ARTIFACTS_FOLDER_PATH)? {
                     fs::create_dir(ARTIFACTS_FOLDER_PATH)?;
                 }
-                if fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
-                    fs::remove_file(SETUP_ARTIFACTS_FOLDER_PATH)?;
+                if fs::exists(SETUP_ARTIFACTS_PATH)? {
+                    fs::remove_file(SETUP_ARTIFACTS_PATH)?;
                 }
-                let mut file = fs::File::create(SETUP_ARTIFACTS_FOLDER_PATH)?;
+                let mut file = fs::File::create(SETUP_ARTIFACTS_PATH)?;
 
                 let mut s_be_bytes = [0; 48];
                 rand::rng().fill_bytes(&mut s_be_bytes);
@@ -129,7 +130,7 @@ impl Commands {
                 file.write_all(stringified_artifacts.as_bytes())?;
 
                 log::info!(
-                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{SETUP_ARTIFACTS_FOLDER_PATH}\""
+                    "Trusted setup ceremony successfully performed. Artifacts have been written in \"{SETUP_ARTIFACTS_PATH}\""
                 );
 
                 Ok(())
@@ -149,14 +150,14 @@ impl Commands {
                     "Starting to commit to the polynomial P(x) = \"{polynomial_displayed}\""
                 );
 
-                if !fs::exists(SETUP_ARTIFACTS_FOLDER_PATH)? {
+                if !fs::exists(SETUP_ARTIFACTS_PATH)? {
                     return Err(anyhow::anyhow!(
                         "Trusted setup artifacts have not been found, generate them beforehand."
                     )
                     .into());
                 }
 
-                let file = fs::File::open(SETUP_ARTIFACTS_FOLDER_PATH)?;
+                let file = fs::File::open(SETUP_ARTIFACTS_PATH)?;
                 let reader = BufReader::new(file);
 
                 let setup_artifacts: Vec<trusted_setup::SetupArtifact> =
@@ -170,10 +171,10 @@ impl Commands {
                 })
                 .map_err(anyhow::Error::from)?;
 
-                if fs::exists(COMMITMENT_ARTIFACTS_FOLDER_PATH)? {
-                    fs::remove_file(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                if fs::exists(COMMITMENT_ARTIFACTS_PATH)? {
+                    fs::remove_file(COMMITMENT_ARTIFACTS_PATH)?;
                 }
-                let mut file = fs::File::create(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                let mut file = fs::File::create(COMMITMENT_ARTIFACTS_PATH)?;
                 file.write_all(commitment_artifact.as_bytes())?;
 
                 log::info!(
@@ -187,18 +188,46 @@ impl Commands {
                     "Starting to evaluate the committed polynomial at input point \"x = {x}\""
                 );
 
-                if !fs::exists(COMMITMENT_ARTIFACTS_FOLDER_PATH)? {
+                if !fs::exists(SETUP_ARTIFACTS_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Trusted setup artifacts have not been found, generate them beforehand."
+                    )
+                    .into());
+                }
+
+                let file = fs::File::open(SETUP_ARTIFACTS_PATH)?;
+                let reader = BufReader::new(file);
+
+                let setup_artifacts: Vec<trusted_setup::SetupArtifact> =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                if !fs::exists(COMMITMENT_ARTIFACTS_PATH)? {
                     return Err(anyhow::anyhow!(
                         "Commitment artifact has not been found, generate it beforehand."
                     )
                     .into());
                 }
-                let file = fs::File::open(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                let file = fs::File::open(COMMITMENT_ARTIFACTS_PATH)?;
                 let reader = BufReader::new(file);
                 let commitment_artifact: CommitmentArtifact =
                     serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
 
                 let y = commitment_artifact.polynomial.evaluate(x)?;
+                let proof = commitment_artifact
+                    .polynomial
+                    .sub(Polynomial::from([i8::try_from(y).unwrap()].as_slice()))
+                    .divide_by_root(x)?
+                    .commit(&setup_artifacts)?;
+
+                let evaluation_artifact =
+                    serde_json::to_string(&EvaluationArtifact { x: *x, y, proof })
+                        .map_err(anyhow::Error::from)?;
+
+                if fs::exists(EVALUATION_ARTIFACTS_PATH)? {
+                    fs::remove_file(EVALUATION_ARTIFACTS_PATH)?;
+                }
+                let mut file = fs::File::create(EVALUATION_ARTIFACTS_PATH)?;
+                file.write_all(evaluation_artifact.as_bytes())?;
 
                 log::info!(
                     "Evaluation successful for polynomial: \"P(x) = {}\" at point \"x = {x}\" with \"P({x}) = {y}\"",
@@ -215,6 +244,13 @@ impl Commands {
 struct CommitmentArtifact {
     polynomial: Polynomial,
     commitment: G1Point,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EvaluationArtifact {
+    x: i128,
+    y: i128,
+    proof: G1Point,
 }
 
 #[cfg(test)]

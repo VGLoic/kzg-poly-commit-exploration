@@ -61,6 +61,54 @@ impl Polynomial {
         Ok(evaluation)
     }
 
+    pub fn sub(&self, p: Polynomial) -> Polynomial {
+        let a_length = self.coefficients.len();
+        let b_length = p.coefficients.len();
+
+        let mut coefficients: Vec<i8>;
+        if a_length > b_length {
+            coefficients = self.coefficients.clone();
+            for (i, coeff) in p.coefficients.iter().enumerate() {
+                coefficients[i] -= coeff;
+            }
+        } else {
+            coefficients = p.coefficients.clone();
+            for (i, coeff) in self.coefficients.iter().enumerate() {
+                coefficients[i] = coeff - coefficients[i];
+            }
+        }
+
+        Polynomial::from(coefficients.as_ref())
+    }
+
+    pub fn divide_by_root(&self, root: &i128) -> Result<Polynomial, anyhow::Error> {
+        let higher_order_cofficient = self.coefficients.last().ok_or(anyhow::anyhow!(
+            "Unable to divide a polynomial of degree zero"
+        ))?;
+        let mut quotient_coefficients_reversed = vec![*higher_order_cofficient];
+        // We skip the higher degree as it is handled at initialisation, and we skip the degree zero as it is checked at the end
+        let mut last_coefficient_found = *higher_order_cofficient;
+        for coefficient in self.coefficients.iter().skip(1).rev().skip(1) {
+            // REMIND ME
+            let contribution_from_root = i8::try_from(*root).unwrap() * last_coefficient_found;
+            last_coefficient_found = *coefficient + contribution_from_root;
+
+            quotient_coefficients_reversed.push(last_coefficient_found);
+        }
+
+        quotient_coefficients_reversed.reverse();
+
+        // We check that the constant term is correct: -1 * root * constant term of q = constant term of p
+        if -i8::try_from(*root).unwrap() * quotient_coefficients_reversed[0] != self.coefficients[0]
+        {
+            return Err(anyhow::anyhow!(
+                "Fail to divide the polynomial by a root, constant terms do not add up"
+            ));
+        }
+
+        Ok(Polynomial::from(quotient_coefficients_reversed.as_slice()))
+    }
+
     /// Generate the G1Point representing the commit to the polynomial using setup artifacts.
     ///
     /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree + 1` artifacts.
