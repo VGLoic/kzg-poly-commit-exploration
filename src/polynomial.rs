@@ -61,6 +61,9 @@ impl Polynomial {
         Ok(evaluation)
     }
 
+    /// Generate the G1Point representing the commit to the polynomial using setup artifacts.
+    ///
+    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree + 1` artifacts.
     pub fn commit(&self, setup_artifacts: &[SetupArtifact]) -> Result<G1Point, anyhow::Error> {
         if self.degree() + 1 > setup_artifacts.len() {
             return Err(anyhow::anyhow!(
