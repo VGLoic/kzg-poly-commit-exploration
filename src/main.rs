@@ -37,7 +37,7 @@ enum Commands {
         ///
         /// Degree up to 9 is supported.
         #[arg(long_help, num_args = 1..)]
-        coefficients: Vec<i8>,
+        coefficients: Vec<i128>,
     },
     /// Evaluate the committed polynomial at an input point and generate the associated Kate proof.
     Evaluate {
@@ -136,7 +136,7 @@ impl Commands {
                 Ok(())
             }
             Commands::Commit { coefficients } => {
-                let polynomial = polynomial::Polynomial::from(coefficients.as_slice());
+                let polynomial = polynomial::Polynomial::try_from(coefficients.as_slice())?;
 
                 let polynomial_displayed = polynomial.to_string();
 
@@ -215,7 +215,7 @@ impl Commands {
                 let y = commitment_artifact.polynomial.evaluate(x)?;
                 let proof = commitment_artifact
                     .polynomial
-                    .sub(Polynomial::from([i8::try_from(y).unwrap()].as_slice()))
+                    .sub(Polynomial::try_from([y].as_slice())?)?
                     .divide_by_root(x)?
                     .commit(&setup_artifacts)?;
 
@@ -257,7 +257,7 @@ struct EvaluationArtifact {
 mod tests {
     use rand::RngCore;
 
-    use crate::polynomial::{Polynomial, blst_scalar_from_i8_as_abs};
+    use crate::polynomial::{Polynomial, blst_scalar_from_i128_as_abs};
 
     use super::trusted_setup::SetupArtifactsGenerator;
 
@@ -390,37 +390,36 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(2).collect();
 
         // Polynomial to commit is `p(x) = 5x + 10
-        let polynomial = Polynomial::from([10, 5].as_slice());
+        let polynomial = Polynomial::try_from([10, 5].as_slice()).unwrap();
         let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
-        let q_as_scalar = blst_scalar_from_i8_as_abs(5);
-        let mut q_at_s = blst::blst_p1::default();
+        let z = 1;
+        let y = polynomial.evaluate(&z).unwrap();
+        let proof = polynomial
+            .sub(Polynomial::try_from([y].as_slice()).unwrap())
+            .unwrap()
+            .divide_by_root(&z)
+            .unwrap()
+            .commit(&setup_artifacts)
+            .unwrap();
+
+        let z_on_g2 = unsafe { *blst::blst_p2_generator() };
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z_on_g2);
+        let lhs = bilinear_map(&proof, &divider);
+
+        let y_as_scalar = blst_scalar_from_i128_as_abs(15);
+        let mut y_on_g1 = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
-                &mut q_at_s,
-                blst::blst_p1_generator(),
-                q_as_scalar.b.as_ptr(),
-                q_as_scalar.b.len() * 8,
-            );
-        };
-
-        let z = unsafe { *blst::blst_p2_generator() };
-        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
-        let lhs = bilinear_map(&q_at_s, &divider);
-
-        let y_as_scalar = blst_scalar_from_i8_as_abs(15);
-        let mut y = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut y,
+                &mut y_on_g1,
                 blst::blst_p1_generator(),
                 y_as_scalar.b.as_ptr(),
                 y_as_scalar.b.len() * 8,
             );
         };
-        let commitment_part = blst_p1_sub(&commitment, &y);
+        let commitment_part = blst_p1_sub(&commitment, &y_on_g1);
         let g2 = unsafe { *blst::blst_p2_generator() };
         let rhs = bilinear_map(&commitment_part, &g2);
 
@@ -434,65 +433,46 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
-        let polynomial = Polynomial::from([4, 3, 2].as_slice());
+        let polynomial = Polynomial::try_from([4, 3, 2].as_slice()).unwrap();
         let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
         // b1 = 2, b0 = 7
-        let b0 = blst_scalar_from_i8_as_abs(7);
-        let mut q_at_s_constant_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut q_at_s_constant_part,
-                blst::blst_p1_generator(),
-                b0.b.as_ptr(),
-                b0.b.len() * 8,
-            );
-        };
-        let b1 = blst_scalar_from_i8_as_abs(2);
-        let mut q_at_s_degree_one_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut q_at_s_degree_one_part,
-                setup_artifacts[1].g1.as_raw_ptr(),
-                b1.b.as_ptr(),
-                b1.b.len() * 8,
-            );
-        };
-        let mut q_at_s = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(
-                &mut q_at_s,
-                &q_at_s_constant_part,
-                &q_at_s_degree_one_part,
-            );
-        }
+        let z = 2;
+        let y = polynomial.evaluate(&z).unwrap();
+        let proof = polynomial
+            .sub(Polynomial::try_from([y].as_slice()).unwrap())
+            .unwrap()
+            .divide_by_root(&z)
+            .unwrap()
+            .commit(&setup_artifacts)
+            .unwrap();
 
-        let z_as_scalar = blst_scalar_from_i8_as_abs(2);
-        let mut z = blst::blst_p2::default();
+        let z_as_scalar = blst_scalar_from_i128_as_abs(2);
+        let mut z_on_g2 = blst::blst_p2::default();
         unsafe {
             blst::blst_p2_mult(
-                &mut z,
+                &mut z_on_g2,
                 blst::blst_p2_generator(),
                 z_as_scalar.b.as_ptr(),
                 z_as_scalar.b.len() * 8,
             );
         }
-        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
-        let lhs = bilinear_map(&q_at_s, &divider);
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z_on_g2);
+        let lhs = bilinear_map(&proof, &divider);
 
-        let y_as_scalar = blst_scalar_from_i8_as_abs(18);
-        let mut y = blst::blst_p1::default();
+        let y_as_scalar = blst_scalar_from_i128_as_abs(18);
+        let mut y_on_g1 = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
-                &mut y,
+                &mut y_on_g1,
                 blst::blst_p1_generator(),
                 y_as_scalar.b.as_ptr(),
                 y_as_scalar.b.len() * 8,
             );
         };
-        let commitment_part = blst_p1_sub(&commitment, &y);
+        let commitment_part = blst_p1_sub(&commitment, &y_on_g1);
         let g2 = unsafe { *blst::blst_p2_generator() };
         let rhs = bilinear_map(&commitment_part, &g2);
 
@@ -506,65 +486,45 @@ mod tests {
         let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
 
         // Polynomial to commit is `p(x) = 2x^2 - 3x - 1`
-        let polynomial = Polynomial::from([-1, -3, 2].as_slice());
+        let polynomial = Polynomial::try_from([-1, -3, 2].as_slice()).unwrap();
         let commitment = polynomial.commit(&setup_artifacts).unwrap();
 
         // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 - 6 - 1 = 1`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 - 3x - 2) / (x - 2) = (x - 2) * (2x + 1) / (x - 2) = 2x + 1`
-        // b1 = 2, b0 = 1
-        let b0 = blst_scalar_from_i8_as_abs(1);
-        let mut q_at_s_constant_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut q_at_s_constant_part,
-                blst::blst_p1_generator(),
-                b0.b.as_ptr(),
-                b0.b.len() * 8,
-            );
-        };
-        let b1 = blst_scalar_from_i8_as_abs(2);
-        let mut q_at_s_degree_one_part = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut q_at_s_degree_one_part,
-                setup_artifacts[1].g1.as_raw_ptr(),
-                b1.b.as_ptr(),
-                b1.b.len() * 8,
-            );
-        };
-        let mut q_at_s = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(
-                &mut q_at_s,
-                &q_at_s_constant_part,
-                &q_at_s_degree_one_part,
-            );
-        }
+        let z = 2;
+        let y = polynomial.evaluate(&z).unwrap();
+        let proof = polynomial
+            .sub(Polynomial::try_from([y].as_slice()).unwrap())
+            .unwrap()
+            .divide_by_root(&z)
+            .unwrap()
+            .commit(&setup_artifacts)
+            .unwrap();
 
-        let z_as_scalar = blst_scalar_from_i8_as_abs(2);
-        let mut z = blst::blst_p2::default();
+        let z_as_scalar = blst_scalar_from_i128_as_abs(2);
+        let mut z_on_g2 = blst::blst_p2::default();
         unsafe {
             blst::blst_p2_mult(
-                &mut z,
+                &mut z_on_g2,
                 blst::blst_p2_generator(),
                 z_as_scalar.b.as_ptr(),
                 z_as_scalar.b.len() * 8,
             );
         }
-        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z);
-        let lhs = bilinear_map(&q_at_s, &divider);
+        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z_on_g2);
+        let lhs = bilinear_map(&proof, &divider);
 
-        let y_as_scalar = blst_scalar_from_i8_as_abs(1);
-        let mut y = blst::blst_p1::default();
+        let y_as_scalar = blst_scalar_from_i128_as_abs(1);
+        let mut y_on_g1 = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
-                &mut y,
+                &mut y_on_g1,
                 blst::blst_p1_generator(),
                 y_as_scalar.b.as_ptr(),
                 y_as_scalar.b.len() * 8,
             );
         };
-        let commitment_part = blst_p1_sub(&commitment, &y);
+        let commitment_part = blst_p1_sub(&commitment, &y_on_g1);
         let g2 = unsafe { *blst::blst_p2_generator() };
         let rhs = bilinear_map(&commitment_part, &g2);
 
