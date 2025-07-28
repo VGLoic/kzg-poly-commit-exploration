@@ -35,7 +35,7 @@ impl TryFrom<&[i128]> for Polynomial {
 impl Polynomial {
     /// Return the degree of the polynomial.
     ///
-    /// Degree is derived as one plus the number of coefficients.
+    /// Degree is derived as one minus the number of coefficients.
     pub fn degree(&self) -> usize {
         if self.coefficients.is_empty() {
             return 0;
