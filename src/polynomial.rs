@@ -79,7 +79,14 @@ impl Polynomial {
                 ))?;
             }
         } else {
-            coefficients = p.coefficients.iter().map(|x| -x).collect();
+            coefficients = p
+                .coefficients
+                .iter()
+                .map(|x| {
+                    x.checked_neg()
+                        .ok_or(anyhow::anyhow!("[sub] Overflow while negating {x}"))
+                })
+                .collect::<Result<Vec<_>, anyhow::Error>>()?;
             for (i, lhs) in self.coefficients.iter().enumerate() {
                 coefficients[i] = lhs.checked_add(coefficients[i]).ok_or(anyhow::anyhow!(
                     "[sub] Overflow while {lhs} - {}",
@@ -128,7 +135,7 @@ impl Polynomial {
             ))?
             .checked_neg()
             .ok_or(anyhow::anyhow!(
-                "[divide_by_root] Overflow while taking the negative of root"
+                "[divide_by_root] Overflow while taking the negative of rebuilt constant term"
             ))?;
         if rebuilt_constant_term != self.coefficients[0] {
             return Err(anyhow::anyhow!(
