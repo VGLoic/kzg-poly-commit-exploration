@@ -111,9 +111,23 @@ impl Polynomial {
     ///
     /// * `root` - Root of the polynomial
     pub fn divide_by_root(&self, root: &i128) -> Result<Polynomial, anyhow::Error> {
-        let higher_order_coefficient = self.coefficients.last().ok_or(anyhow::anyhow!(
-            "Unable to divide a polynomial of degree zero"
-        ))?;
+        let higher_order_coefficient = match self.coefficients.last() {
+            None => {
+                return Ok(Polynomial {
+                    coefficients: vec![],
+                });
+            }
+            Some(v) => v,
+        };
+        if self.coefficients.len() == 1 {
+            if *higher_order_coefficient == 0 {
+                return Ok(Polynomial {
+                    coefficients: vec![],
+                });
+            } else {
+                return Err(anyhow::anyhow!("Unable to divide a constant polynomial"));
+            }
+        }
         let mut quotient_coefficients_reversed = vec![*higher_order_coefficient];
         // We skip the higher degree as it is handled at initialisation, and we skip the degree zero as it is checked at the end
         let mut last_coefficient_found = *higher_order_coefficient;
