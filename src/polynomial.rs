@@ -64,7 +64,7 @@ impl Polynomial {
 
     /// Subtract a polynomial from the current one
     ///
-    /// * `p` - Polynomial to subract to the current one
+    /// * `p` - Polynomial to subtract to the current one
     pub fn sub(&self, p: Polynomial) -> Result<Polynomial, anyhow::Error> {
         let a_length = self.coefficients.len();
         let b_length = p.coefficients.len();
@@ -95,12 +95,12 @@ impl Polynomial {
     ///
     /// * `root` - Root of the polynomial
     pub fn divide_by_root(&self, root: &i128) -> Result<Polynomial, anyhow::Error> {
-        let higher_order_cofficient = self.coefficients.last().ok_or(anyhow::anyhow!(
+        let higher_order_coefficient = self.coefficients.last().ok_or(anyhow::anyhow!(
             "Unable to divide a polynomial of degree zero"
         ))?;
-        let mut quotient_coefficients_reversed = vec![*higher_order_cofficient];
+        let mut quotient_coefficients_reversed = vec![*higher_order_coefficient];
         // We skip the higher degree as it is handled at initialisation, and we skip the degree zero as it is checked at the end
-        let mut last_coefficient_found = *higher_order_cofficient;
+        let mut last_coefficient_found = *higher_order_coefficient;
         for coefficient in self.coefficients.iter().skip(1).rev().skip(1) {
             let contribution_from_root =
                 root.checked_mul(last_coefficient_found)
@@ -111,7 +111,7 @@ impl Polynomial {
                 coefficient
                     .checked_add(contribution_from_root)
                     .ok_or(anyhow::anyhow!(
-                        "[divide_by_root] Overflow while {coefficient} * {contribution_from_root}"
+                        "[divide_by_root] Overflow while {coefficient} + {contribution_from_root}"
                     ))?;
 
             quotient_coefficients_reversed.push(last_coefficient_found);
