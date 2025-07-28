@@ -43,6 +43,15 @@ impl Polynomial {
         (self.coefficients.len() - 1) as u32
     }
 
+    /// Creates a polynomial of order 0 from a constant
+    ///
+    /// * `a` - Constant
+    pub fn from_constant(a: i128) -> Polynomial {
+        Polynomial {
+            coefficients: vec![a],
+        }
+    }
+
     /// Evaluate the polynomial at an input point
     ///
     /// * `x` - Input point
