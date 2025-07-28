@@ -36,11 +36,11 @@ impl Polynomial {
     /// Return the degree of the polynomial.
     ///
     /// Degree is derived as one minus the number of coefficients.
-    pub fn degree(&self) -> usize {
+    pub fn degree(&self) -> u32 {
         if self.coefficients.is_empty() {
             return 0;
         }
-        self.coefficients.len() - 1
+        (self.coefficients.len() - 1) as u32
     }
 
     /// Evaluate the polynomial at an input point
@@ -48,10 +48,10 @@ impl Polynomial {
     /// * `x` - Input point
     pub fn evaluate(&self, x: &i128) -> Result<i128, anyhow::Error> {
         let mut evaluation: i128 = 0;
-        for (power, coefficient) in (0_u32..).zip(self.coefficients.iter()) {
-            let x_powered = x
-                .checked_pow(power)
-                .ok_or(anyhow::anyhow!("[evaluate] Overflow while pow {x}^{power}"))?;
+        for (degree, coefficient) in self.coefficients.iter().enumerate() {
+            let x_powered = x.checked_pow(degree as u32).ok_or(anyhow::anyhow!(
+                "[evaluate] Overflow while pow {x}^{degree}"
+            ))?;
             let contribution = coefficient.checked_mul(x_powered).ok_or(anyhow::anyhow!(
                 "[evaluate] Overflow while {coefficient} * {x_powered}"
             ))?;
@@ -150,7 +150,8 @@ impl Polynomial {
     ///
     /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree + 1` artifacts.
     pub fn commit(&self, setup_artifacts: &[SetupArtifact]) -> Result<G1Point, anyhow::Error> {
-        if self.degree() + 1 > setup_artifacts.len() {
+        if usize::try_from(self.degree() + 1).map_err(anyhow::Error::from)? > setup_artifacts.len()
+        {
             return Err(anyhow::anyhow!(
                 "Setup does not allow for commitment generation of the polynomial. The polynomial degree is too high."
             ));

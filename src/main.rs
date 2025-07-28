@@ -100,7 +100,7 @@ const SETUP_ARTIFACTS_PATH: &str = "./artifacts/setup.json";
 const COMMITMENT_ARTIFACTS_PATH: &str = "./artifacts/commitment.json";
 const EVALUATION_ARTIFACTS_PATH: &str = "./artifacts/evaluation.json";
 
-const MAX_DEGREE: u8 = 9;
+const MAX_DEGREE: u32 = 9;
 
 impl Commands {
     fn run(&self) -> Result<(), CliError> {
@@ -121,7 +121,7 @@ impl Commands {
 
                 let setup_artifacts: Vec<_> =
                     trusted_setup::SetupArtifactsGenerator::new(s_be_bytes)
-                        .take(usize::from(MAX_DEGREE + 1))
+                        .take(usize::try_from(MAX_DEGREE + 1).map_err(anyhow::Error::from)?)
                         .collect();
 
                 let stringified_artifacts =
@@ -140,7 +140,7 @@ impl Commands {
 
                 let polynomial_displayed = polynomial.to_string();
 
-                if polynomial.degree() > usize::from(MAX_DEGREE) {
+                if polynomial.degree() > MAX_DEGREE {
                     return Err(
                         anyhow::anyhow!("Only polynomials up to degree 9 are supported").into(),
                     );
