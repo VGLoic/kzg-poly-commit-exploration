@@ -15,7 +15,8 @@ impl TryFrom<&[i128]> for Polynomial {
     fn try_from(value: &[i128]) -> Result<Self, Self::Error> {
         if u32::try_from(value.len()).is_err() {
             return Err(anyhow::anyhow!(
-                "Too many coefficients for polynomial, only 2**32 - 1 coefficients is supported"
+                "Too many coefficients for polynomial, only 2**32 - 1 coefficients is supported. Got {}",
+                value.len()
             ));
         }
 
@@ -46,21 +47,16 @@ impl Polynomial {
     ///
     /// * `x` - Input point
     pub fn evaluate(&self, x: &i128) -> Result<i128, anyhow::Error> {
-        if u32::try_from(self.coefficients.len()).is_err() {
-            return Err(anyhow::anyhow!(
-                "Too many coefficients for polynomial evaluation, only 2**32 coefficients is supported"
-            ));
-        }
         let mut evaluation: i128 = 0;
         for (power, coefficient) in (0_u32..).zip(self.coefficients.iter()) {
             let x_powered = x
                 .checked_pow(power)
-                .ok_or(anyhow::anyhow!("Overflow while pow {x}^{power}"))?;
+                .ok_or(anyhow::anyhow!("[evaluate] Overflow while pow {x}^{power}"))?;
             let contribution = coefficient.checked_mul(x_powered).ok_or(anyhow::anyhow!(
-                "Overflow while {coefficient} * {x_powered}"
+                "[evaluate] Overflow while {coefficient} * {x_powered}"
             ))?;
             evaluation = evaluation.checked_add(contribution).ok_or(anyhow::anyhow!(
-                "Overflow while {evaluation} + {contribution}"
+                "[evaluate] Overflow while {evaluation} + {contribution}"
             ))?;
         }
         Ok(evaluation)
@@ -78,7 +74,7 @@ impl Polynomial {
             coefficients = self.coefficients.clone();
             for (i, rhs) in p.coefficients.iter().enumerate() {
                 coefficients[i] = coefficients[i].checked_sub(*rhs).ok_or(anyhow::anyhow!(
-                    "Overflow while {} - {rhs}",
+                    "[sub] Overflow while {} - {rhs}",
                     coefficients[i]
                 ))?;
             }
@@ -86,7 +82,7 @@ impl Polynomial {
             coefficients = p.coefficients.clone();
             for (i, lhs) in self.coefficients.iter().enumerate() {
                 coefficients[i] = lhs.checked_sub(coefficients[i]).ok_or(anyhow::anyhow!(
-                    "Overflow while {lhs} - {}",
+                    "[sub] Overflow while {lhs} - {}",
                     coefficients[i]
                 ))?;
             }
@@ -109,13 +105,13 @@ impl Polynomial {
             let contribution_from_root =
                 root.checked_mul(last_coefficient_found)
                     .ok_or(anyhow::anyhow!(
-                        "Overflow while {root} * {last_coefficient_found}"
+                        "[divide_by_root] Overflow while {root} * {last_coefficient_found}"
                     ))?;
             last_coefficient_found =
                 coefficient
                     .checked_add(contribution_from_root)
                     .ok_or(anyhow::anyhow!(
-                        "Overflow while {coefficient} * {contribution_from_root}"
+                        "[divide_by_root] Overflow while {coefficient} * {contribution_from_root}"
                     ))?;
 
             quotient_coefficients_reversed.push(last_coefficient_found);
@@ -126,7 +122,7 @@ impl Polynomial {
         // We check that the constant term is correct: -1 * root * constant term of q = constant term of p
         if -root * quotient_coefficients_reversed[0] != self.coefficients[0] {
             return Err(anyhow::anyhow!(
-                "Fail to divide the polynomial by a root, constant terms do not add up"
+                "[divide_by_root] Fail to divide the polynomial by a root, constant terms do not add up"
             ));
         }
 

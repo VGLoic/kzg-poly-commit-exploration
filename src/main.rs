@@ -74,7 +74,7 @@ fn main() {
     match &cli.command {
         Some(cmd) => {
             if let Err(e) = cmd.run() {
-                panic!("Command execution failed with error: {e}")
+                panic!("Command execution failed with error: {e}");
             }
         }
         None => {
