@@ -79,9 +79,9 @@ impl Polynomial {
                 ))?;
             }
         } else {
-            coefficients = p.coefficients.clone();
+            coefficients = p.coefficients.iter().map(|x| -x).collect();
             for (i, lhs) in self.coefficients.iter().enumerate() {
-                coefficients[i] = lhs.checked_sub(coefficients[i]).ok_or(anyhow::anyhow!(
+                coefficients[i] = lhs.checked_add(coefficients[i]).ok_or(anyhow::anyhow!(
                     "[sub] Overflow while {lhs} - {}",
                     coefficients[i]
                 ))?;
