@@ -13,7 +13,7 @@ impl TryFrom<&[i128]> for Polynomial {
     type Error = anyhow::Error;
 
     fn try_from(value: &[i128]) -> Result<Self, Self::Error> {
-        if u32::try_from(value.len()).is_err() {
+        if value.len() > u32::MAX as usize {
             return Err(anyhow::anyhow!(
                 "Too many coefficients for polynomial, only 2**32 - 1 coefficients is supported. Got {}",
                 value.len()
@@ -160,8 +160,7 @@ impl Polynomial {
     ///
     /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree + 1` artifacts.
     pub fn commit(&self, setup_artifacts: &[SetupArtifact]) -> Result<G1Point, anyhow::Error> {
-        if usize::try_from(self.degree() + 1).map_err(anyhow::Error::from)? > setup_artifacts.len()
-        {
+        if (self.degree() + 1) as usize > setup_artifacts.len() {
             return Err(anyhow::anyhow!(
                 "Setup does not allow for commitment generation of the polynomial. The polynomial degree is too high."
             ));
