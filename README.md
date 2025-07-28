@@ -255,10 +255,69 @@ The generation of `s` is simply made using a basic `fill_bytes` with the default
 
 ### Polynomial commitment
 
-Now that we have the artifacts of the trusted setup, we can implement the commitment part. The plan will be to add a new command such that:
+Now that we have the artifacts of the trusted setup, we can implement the commitment part.
+
+Let us define `P(x) = a_n * x^n + ... + a_1 * x + a_0` a polynomial as a function where `x` can be anything. The collection of `{ a_i }` represents the coefficients of the polynomial. The commitment will be a point in the first elliptic group, defined as the evaluation of the polynomial at the secret `s` and projected in the elliptic group, i.e.
+```
+commitment = P(s) * G1 = a_n * s^n * G1 + ... + a_1 * s * G1 + a_0 * G1
+```
+where G1 is the generator of the first elliptic curve group. We don't know the power of `s` but we recognize the elements of the trusted setup: `s^i * G1, i = 0, ..., N`.
+
+The plan will be to add a new command such that:
 - it receives as input the polynomial coefficients,
 - it retrieves the trusted setup artifacts,
 - it computes the polynomial commitment and generate a new artifact with the polynomial and the associated commitment.
+
+The computation of the `commit` is quite straightforward once we have all the ingredients, here is the method for a polynomial:
+```rust
+pub fn commit(&self, setup_artifacts: &[SetupArtifact]) -> Result<G1Point, anyhow::Error> {
+    if self.degree() + 1 > setup_artifacts.len() {
+        return Err(anyhow::anyhow!(
+            "Setup does not allow for commitment generation of the polynomial. The polynomial degree is too high."
+        ));
+    }
+
+    let mut commitment = blst::blst_p1::default();
+    for (i, coefficient) in self.coefficients.iter().enumerate() {
+        let coefficient_as_scalar = blst_scalar_from_i8_as_abs(*coefficient);
+        let setup_point = &setup_artifacts[i].g1;
+
+        let mut contribution = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut contribution,
+                setup_point.as_raw_ptr(),
+                coefficient_as_scalar.b.as_ptr(),
+                coefficient_as_scalar.b.len() * 8,
+            );
+        };
+        if *coefficient < 0 {
+            unsafe {
+                blst::blst_p1_cneg(&mut contribution, true);
+            }
+        }
+        unsafe {
+            blst::blst_p1_add_or_double(&mut commitment, &commitment, &contribution);
+        };
+    }
+
+    Ok(commitment.into())
+}
+```
+
+### Polynomial evaluation and Kate proofs
+
+We now have the command to generate a commitment for a given polynomial. What we want now is to let the user asks for a polynomial evaluation at an input point and generate the associated proof.
+
+Let us consider the input point `x_eval` and we define `y_eval = P(x_eval)`.
+
+From this, we can define the quotient polynomial `Q(x) = (P(x) - y_eval) / (x - x_eval)`. Remember that `x_eval` is straightfowardly a root of the polynomial `P(x) - y_eval`, therefore `Q` is a well defined polynomial.
+
+The proof will finally be defined as the evaluation of `Q` at the secret `s` and projected on the first elliptic group, i.e. `proof = Q(s) * G1`.
+
+Once `Q` has been derived from `P` and `(x_eval, y_eval)`, the computation of the proof can be made using the setup artifacts in a similar way than the commitment above.
+
+The validation of the proof will be tackled in the next section.
 
 ## Repository setup
 
