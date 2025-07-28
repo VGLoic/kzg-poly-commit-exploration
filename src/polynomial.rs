@@ -65,7 +65,7 @@ impl Polynomial {
     /// Subtract a polynomial from the current one
     ///
     /// * `p` - Polynomial to subtract to the current one
-    pub fn sub(&self, p: Polynomial) -> Result<Polynomial, anyhow::Error> {
+    pub fn sub(&self, p: &Polynomial) -> Result<Polynomial, anyhow::Error> {
         let a_length = self.coefficients.len();
         let b_length = p.coefficients.len();
 

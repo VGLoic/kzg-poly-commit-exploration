@@ -215,7 +215,7 @@ impl Commands {
                 let y = commitment_artifact.polynomial.evaluate(x)?;
                 let proof = commitment_artifact
                     .polynomial
-                    .sub(Polynomial::try_from([y].as_slice())?)?
+                    .sub(&Polynomial::try_from([y].as_slice())?)?
                     .divide_by_root(x)?
                     .commit(&setup_artifacts)?;
 
@@ -398,7 +398,7 @@ mod tests {
         let z = 1;
         let y = polynomial.evaluate(&z).unwrap();
         let proof = polynomial
-            .sub(Polynomial::try_from([y].as_slice()).unwrap())
+            .sub(&Polynomial::try_from([y].as_slice()).unwrap())
             .unwrap()
             .divide_by_root(&z)
             .unwrap()
@@ -442,7 +442,7 @@ mod tests {
         let z = 2;
         let y = polynomial.evaluate(&z).unwrap();
         let proof = polynomial
-            .sub(Polynomial::try_from([y].as_slice()).unwrap())
+            .sub(&Polynomial::try_from([y].as_slice()).unwrap())
             .unwrap()
             .divide_by_root(&z)
             .unwrap()
@@ -494,7 +494,7 @@ mod tests {
         let z = 2;
         let y = polynomial.evaluate(&z).unwrap();
         let proof = polynomial
-            .sub(Polynomial::try_from([y].as_slice()).unwrap())
+            .sub(&Polynomial::try_from([y].as_slice()).unwrap())
             .unwrap()
             .divide_by_root(&z)
             .unwrap()
