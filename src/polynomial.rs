@@ -120,13 +120,16 @@ impl Polynomial {
         quotient_coefficients_reversed.reverse();
 
         // We check that the constant term is correct: -1 * root * constant term of q = constant term of p
-        let rebuilt_constant_term =
-            -root
-                .checked_mul(quotient_coefficients_reversed[0])
-                .ok_or(anyhow::anyhow!(
-                    "[divide_by_root] Overflow while {root} * {}",
-                    quotient_coefficients_reversed[0]
-                ))?;
+        let rebuilt_constant_term = root
+            .checked_mul(quotient_coefficients_reversed[0])
+            .ok_or(anyhow::anyhow!(
+                "[divide_by_root] Overflow while {root} * {}",
+                quotient_coefficients_reversed[0]
+            ))?
+            .checked_neg()
+            .ok_or(anyhow::anyhow!(
+                "[divide_by_root] Overflow while taking the negative of root"
+            ))?;
         if rebuilt_constant_term != self.coefficients[0] {
             return Err(anyhow::anyhow!(
                 "[divide_by_root] Fail to divide the polynomial by a root, constant terms do not add up"
