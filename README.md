@@ -319,6 +319,17 @@ Once `Q` has been derived from `P` and `(x_eval, y_eval)`, the computation of th
 
 The validation of the proof will be tackled in the next section.
 
+In terms of code, I added a few methods for the `Polynomial` struct, I will see if I gather them later on but I like it like this for now as it is very clear what is going on:
+```rust
+let y = commitment_artifact.polynomial.evaluate(x)?;
+let proof = commitment_artifact
+    .polynomial
+    .sub(Polynomial::try_from([y].as_slice())?)?
+    .divide_by_root(x)?
+    .commit(&setup_artifacts)?;
+```
+I used the fact that the `commit` is actually the evaluation at the secret `s` projected on `G1`, so commit for `Q` is actually the computation of the proof.
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
