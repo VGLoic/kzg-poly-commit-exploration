@@ -61,6 +61,9 @@ impl Polynomial {
         Ok(evaluation)
     }
 
+    /// Subtract a polynomial from the current one
+    ///
+    /// * `p` - Polynomial to subract to the current one
     pub fn sub(&self, p: Polynomial) -> Polynomial {
         let a_length = self.coefficients.len();
         let b_length = p.coefficients.len();
@@ -81,6 +84,9 @@ impl Polynomial {
         Polynomial::from(coefficients.as_ref())
     }
 
+    /// Divides the polynomial by the divider polynomial `x - root` and returns the quotient polynomial.
+    ///
+    /// * `root` - Root of the polynomial
     pub fn divide_by_root(&self, root: &i128) -> Result<Polynomial, anyhow::Error> {
         let higher_order_cofficient = self.coefficients.last().ok_or(anyhow::anyhow!(
             "Unable to divide a polynomial of degree zero"
