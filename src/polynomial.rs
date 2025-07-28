@@ -108,7 +108,8 @@ impl Polynomial {
         let mut quotient_coefficients_reversed = vec![*higher_order_coefficient];
         // We skip the higher degree as it is handled at initialisation, and we skip the degree zero as it is checked at the end
         let mut last_coefficient_found = *higher_order_coefficient;
-        for coefficient in self.coefficients.iter().skip(1).rev().skip(1) {
+        for i in (1..self.coefficients.len() - 1).rev() {
+            let coefficient = self.coefficients[i];
             let contribution_from_root =
                 root.checked_mul(last_coefficient_found)
                     .ok_or(anyhow::anyhow!(
