@@ -39,6 +39,12 @@ enum Commands {
         #[arg(long_help, num_args = 1..)]
         coefficients: Vec<i8>,
     },
+    /// Evaluate the committed polynomial at an input point and generate the associated Kate proof.
+    Evaluate {
+        /// Input point
+        #[arg()]
+        x: i128,
+    },
 }
 
 fn main() {
@@ -172,6 +178,31 @@ impl Commands {
 
                 log::info!(
                     "Commitment to the polynomial \"P(x) = {polynomial_displayed}\" has been successfully generated."
+                );
+
+                Ok(())
+            }
+            Commands::Evaluate { x } => {
+                log::info!(
+                    "Starting to evaluate the committed polynomial at input point \"x = {x}\""
+                );
+
+                if !fs::exists(COMMITMENT_ARTIFACTS_FOLDER_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Commitment artifact has not been found, generate it beforehand."
+                    )
+                    .into());
+                }
+                let file = fs::File::open(COMMITMENT_ARTIFACTS_FOLDER_PATH)?;
+                let reader = BufReader::new(file);
+                let commitment_artifact: CommitmentArtifact =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                let y = commitment_artifact.polynomial.evaluate(x)?;
+
+                log::info!(
+                    "Evaluation successful for polynomial: \"P(x) = {}\" at point \"x = {x}\" with \"P({x}) = {y}\"",
+                    commitment_artifact.polynomial
                 );
 
                 Ok(())

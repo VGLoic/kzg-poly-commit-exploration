@@ -24,11 +24,41 @@ impl From<&[i8]> for Polynomial {
 }
 
 impl Polynomial {
+    /// Return the degree of the polynomial.
+    ///
+    /// Degree is derived as one plus the number of coefficients.
     pub fn degree(&self) -> usize {
         if self.coefficients.is_empty() {
             return 0;
         }
         self.coefficients.len() - 1
+    }
+
+    /// Evaluate the polynomial at an input point
+    ///
+    /// * `x` - Input point
+    pub fn evaluate(&self, x: &i128) -> Result<i128, anyhow::Error> {
+        if u32::try_from(self.coefficients.len()).is_err() {
+            return Err(anyhow::anyhow!(
+                "Too many coefficients for polynomial evaluation, only 2**32 coefficients is supported"
+            ));
+        }
+        let mut evaluation: i128 = 0;
+        for (power, coefficient) in (0_u32..).zip(self.coefficients.iter()) {
+            let x_powered = x
+                .checked_pow(power)
+                .ok_or(anyhow::anyhow!("Overflow while pow {x}^{power}"))?;
+            let contribution =
+                i128::from(*coefficient)
+                    .checked_mul(x_powered)
+                    .ok_or(anyhow::anyhow!(
+                        "Overflow while {coefficient} * {x_powered}"
+                    ))?;
+            evaluation = evaluation.checked_add(contribution).ok_or(anyhow::anyhow!(
+                "Overflow while {evaluation} + {contribution}"
+            ))?;
+        }
+        Ok(evaluation)
     }
 
     pub fn commit(&self, setup_artifacts: &[SetupArtifact]) -> Result<G1Point, anyhow::Error> {
