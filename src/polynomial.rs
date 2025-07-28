@@ -178,7 +178,9 @@ pub fn blst_scalar_from_i128_as_abs(a: i128) -> blst::blst_scalar {
     let mut padded_bytes = [0u8; 48];
     padded_bytes[..16].copy_from_slice(&a.unsigned_abs().to_le_bytes());
     let mut scalar: blst::blst_scalar = blst::blst_scalar::default();
-    unsafe { blst::blst_scalar_from_le_bytes(&mut scalar, padded_bytes.as_ptr(), padded_bytes.len()) };
+    unsafe {
+        blst::blst_scalar_from_le_bytes(&mut scalar, padded_bytes.as_ptr(), padded_bytes.len())
+    };
     scalar
 }
 
