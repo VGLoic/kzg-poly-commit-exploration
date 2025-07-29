@@ -193,7 +193,7 @@ impl From<blst::blst_p2> for G2Point {
 
 impl G2Point {
     /// Returns the wrapped point as raw pointer
-    pub fn as_raw_ptr(&self) -> *const blst::blst_p2 {
+    fn as_raw_ptr(&self) -> *const blst::blst_p2 {
         &self.0
     }
 
