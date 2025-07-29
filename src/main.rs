@@ -8,7 +8,10 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::{curves::G1Point, polynomial::Polynomial};
+use crate::{
+    curves::{G1Point, G2Point, bilinear_map},
+    polynomial::Polynomial,
+};
 
 mod curves;
 mod polynomial;
@@ -45,6 +48,8 @@ enum Commands {
         #[arg()]
         x: i128,
     },
+    /// Verify the previous evaluation with its proof
+    VerifyEvaluation {},
 }
 
 fn main() {
@@ -236,6 +241,74 @@ impl Commands {
 
                 Ok(())
             }
+            Commands::VerifyEvaluation {} => {
+                log::info!("Starting to verify the previous polynomial evaluation");
+
+                if !fs::exists(SETUP_ARTIFACTS_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Trusted setup artifacts have not been found, generate them beforehand."
+                    )
+                    .into());
+                }
+
+                let file = fs::File::open(SETUP_ARTIFACTS_PATH)?;
+                let reader = BufReader::new(file);
+
+                let setup_artifacts: Vec<trusted_setup::SetupArtifact> =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                if !fs::exists(COMMITMENT_ARTIFACTS_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Commitment artifact has not been found, generate it beforehand."
+                    )
+                    .into());
+                }
+                let file = fs::File::open(COMMITMENT_ARTIFACTS_PATH)?;
+                let reader = BufReader::new(file);
+                let commitment_artifact: CommitmentArtifact =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                if !fs::exists(EVALUATION_ARTIFACTS_PATH)? {
+                    return Err(anyhow::anyhow!(
+                        "Evaluation artifact has not been found, generate it beforehand."
+                    )
+                    .into());
+                }
+                let file = fs::File::open(EVALUATION_ARTIFACTS_PATH)?;
+                let reader = BufReader::new(file);
+                let evaluation_artifact: EvaluationArtifact =
+                    serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
+
+                let lhs = bilinear_map(
+                    &evaluation_artifact.proof,
+                    &setup_artifacts[1]
+                        .g2
+                        .sub(&G2Point::from_i128(evaluation_artifact.x)),
+                );
+                let rhs = bilinear_map(
+                    &commitment_artifact
+                        .commitment
+                        .sub(&G1Point::from_i128(evaluation_artifact.y)),
+                    &G2Point::from_i128(1),
+                );
+
+                if lhs != rhs {
+                    return Err(anyhow::anyhow!(
+                        "The proof associated to the evaluation is incorrect."
+                    )
+                    .into());
+                }
+
+                log::info!(
+                    "Successfully verified evaluation for polynomial \"P(x) = {}\" at point \"x = {}\" with \"P({}) = {}\"",
+                    commitment_artifact.polynomial,
+                    evaluation_artifact.x,
+                    evaluation_artifact.x,
+                    evaluation_artifact.y
+                );
+
+                Ok(())
+            }
         }
     }
 }
@@ -257,8 +330,8 @@ struct EvaluationArtifact {
 mod tests {
     use rand::RngCore;
 
-    use crate::polynomial::{Polynomial, blst_scalar_from_i128_as_abs};
-
+    use super::curves::{G1Point, G2Point, bilinear_map};
+    use super::polynomial::Polynomial;
     use super::trusted_setup::SetupArtifactsGenerator;
 
     #[test]
@@ -339,50 +412,6 @@ mod tests {
         }
     }
 
-    fn bilinear_map(p1: &blst::blst_p1, p2: &blst::blst_p2) -> blst::blst_fp12 {
-        let mut p1_affine = blst::blst_p1_affine::default();
-        unsafe {
-            blst::blst_p1_to_affine(&mut p1_affine, p1);
-        };
-        let mut p2_affine = blst::blst_p2_affine::default();
-        unsafe {
-            blst::blst_p2_to_affine(&mut p2_affine, p2);
-        };
-
-        let mut res = blst::blst_fp12::default();
-        unsafe {
-            blst::blst_miller_loop(&mut res, &p2_affine, &p1_affine);
-            blst::blst_final_exp(&mut res, &res);
-        };
-        res
-    }
-
-    /// Computes a - b
-    fn blst_p1_sub(a: &blst::blst_p1, b: &blst::blst_p1) -> blst::blst_p1 {
-        let mut neg_b = *b;
-        unsafe {
-            blst::blst_p1_cneg(&mut neg_b, true);
-        };
-        let mut out = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_add_or_double(&mut out, a, &neg_b);
-        };
-        out
-    }
-
-    /// Computes a - b
-    fn blst_p2_sub(a: &blst::blst_p2, b: &blst::blst_p2) -> blst::blst_p2 {
-        let mut neg_b = *b;
-        unsafe {
-            blst::blst_p2_cneg(&mut neg_b, true);
-        };
-        let mut out = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_add_or_double(&mut out, a, &neg_b);
-        };
-        out
-    }
-
     #[test]
     fn test_commitment_for_polynomial_degree_one() {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
@@ -405,23 +434,11 @@ mod tests {
             .commit(&setup_artifacts)
             .unwrap();
 
-        let z_on_g2 = unsafe { *blst::blst_p2_generator() };
-        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z_on_g2);
-        let lhs = bilinear_map(&proof, &divider);
-
-        let y_as_scalar = blst_scalar_from_i128_as_abs(15);
-        let mut y_on_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut y_on_g1,
-                blst::blst_p1_generator(),
-                y_as_scalar.b.as_ptr(),
-                y_as_scalar.b.len() * 8,
-            );
-        };
-        let commitment_part = blst_p1_sub(&commitment, &y_on_g1);
-        let g2 = unsafe { *blst::blst_p2_generator() };
-        let rhs = bilinear_map(&commitment_part, &g2);
+        let lhs = bilinear_map(&proof, &setup_artifacts[1].g2.sub(&G2Point::from_i128(z)));
+        let rhs = bilinear_map(
+            &commitment.sub(&G1Point::from_i128(y)),
+            &G2Point::from_i128(1),
+        );
 
         assert_eq!(lhs, rhs);
     }
@@ -438,7 +455,6 @@ mod tests {
 
         // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
         // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
-        // b1 = 2, b0 = 7
         let z = 2;
         let y = polynomial.evaluate(&z).unwrap();
         let proof = polynomial
@@ -449,32 +465,11 @@ mod tests {
             .commit(&setup_artifacts)
             .unwrap();
 
-        let z_as_scalar = blst_scalar_from_i128_as_abs(2);
-        let mut z_on_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut z_on_g2,
-                blst::blst_p2_generator(),
-                z_as_scalar.b.as_ptr(),
-                z_as_scalar.b.len() * 8,
-            );
-        }
-        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z_on_g2);
-        let lhs = bilinear_map(&proof, &divider);
-
-        let y_as_scalar = blst_scalar_from_i128_as_abs(18);
-        let mut y_on_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut y_on_g1,
-                blst::blst_p1_generator(),
-                y_as_scalar.b.as_ptr(),
-                y_as_scalar.b.len() * 8,
-            );
-        };
-        let commitment_part = blst_p1_sub(&commitment, &y_on_g1);
-        let g2 = unsafe { *blst::blst_p2_generator() };
-        let rhs = bilinear_map(&commitment_part, &g2);
+        let lhs = bilinear_map(&proof, &setup_artifacts[1].g2.sub(&G2Point::from_i128(z)));
+        let rhs = bilinear_map(
+            &commitment.sub(&G1Point::from_i128(y)),
+            &G2Point::from_i128(1),
+        );
 
         assert_eq!(lhs, rhs);
     }
@@ -501,32 +496,11 @@ mod tests {
             .commit(&setup_artifacts)
             .unwrap();
 
-        let z_as_scalar = blst_scalar_from_i128_as_abs(2);
-        let mut z_on_g2 = blst::blst_p2::default();
-        unsafe {
-            blst::blst_p2_mult(
-                &mut z_on_g2,
-                blst::blst_p2_generator(),
-                z_as_scalar.b.as_ptr(),
-                z_as_scalar.b.len() * 8,
-            );
-        }
-        let divider = blst_p2_sub(&setup_artifacts[1].g2, &z_on_g2);
-        let lhs = bilinear_map(&proof, &divider);
-
-        let y_as_scalar = blst_scalar_from_i128_as_abs(1);
-        let mut y_on_g1 = blst::blst_p1::default();
-        unsafe {
-            blst::blst_p1_mult(
-                &mut y_on_g1,
-                blst::blst_p1_generator(),
-                y_as_scalar.b.as_ptr(),
-                y_as_scalar.b.len() * 8,
-            );
-        };
-        let commitment_part = blst_p1_sub(&commitment, &y_on_g1);
-        let g2 = unsafe { *blst::blst_p2_generator() };
-        let rhs = bilinear_map(&commitment_part, &g2);
+        let lhs = bilinear_map(&proof, &setup_artifacts[1].g2.sub(&G2Point::from_i128(z)));
+        let rhs = bilinear_map(
+            &commitment.sub(&G1Point::from_i128(y)),
+            &G2Point::from_i128(1),
+        );
 
         assert_eq!(lhs, rhs);
     }

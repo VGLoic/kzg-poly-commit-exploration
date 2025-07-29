@@ -330,6 +330,47 @@ let proof = commitment_artifact
 ```
 I used the fact that the `commit` is actually the evaluation at the secret `s` projected on `G1`, so commit for `Q` is actually the computation of the proof.
 
+### Verification of the polynomial evaluation
+
+The final step will be to verify the proof that we generated in the last step.
+
+The verification will be made by checking that evaluating our pairing function with two different couples will lead to the same result:
+
+```
+e(proof, (s - x) * G2) = e(commit - y * G1, G2)
+```
+
+Using the bilinearity property of the pairing we can check that both results must be equal:
+```
+e(proof, (s - x) * G2) = e(G1, G2)^(Q(s) * (s - x)) = e(G1, G2)^(P(s) - y) = e((P(s) - y) * G1, G2) = e(commit - y * G1, G2)
+```
+where the definition of the commmit and Q have been used. This is not a serious proof by the way.
+
+In terms of implementation, we will start by computing the missing elements that we will use in our pairings: `(s - x) * G2` and `commit - y * G1`. With this, we can evaluate the pairings, these are defined with the application of first the `Miller loop` and then the `final exponentiation`. These two pieces are implemented by the `blst` crate. I don't know the details of these two algorithms but feel free to dig more on this in [here](https://static1.squarespace.com/static/5fdbb09f31d71c1227082339/t/5ff394720493bd28278889c6/1609798774687/PairingsForBeginners.pdf).
+
+```rust
+let lhs = bilinear_map(
+    &evaluation_artifact.proof,
+    &setup_artifacts[1]
+        .g2
+        .sub(&G2Point::from_i128(evaluation_artifact.x)),
+);
+let rhs = bilinear_map(
+    &commitment_artifact
+        .commitment
+        .sub(&G1Point::from_i128(evaluation_artifact.y)),
+    &G2Point::from_i128(1),
+);
+
+if lhs != rhs {
+    return Err(anyhow::anyhow!(
+        "The proof associated to the evaluation is incorrect."
+    )
+    .into());
+}
+```
+
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.

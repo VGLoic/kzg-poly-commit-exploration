@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::curves::G1Point;
+use super::curves::G1Point;
 
 use super::trusted_setup::SetupArtifact;
 
@@ -180,42 +180,15 @@ impl Polynomial {
             ));
         }
 
-        let mut commitment = blst::blst_p1::default();
+        let mut commitment = G1Point::from_i128(0);
         for (i, coefficient) in self.coefficients.iter().enumerate() {
-            let coefficient_as_scalar = blst_scalar_from_i128_as_abs(*coefficient);
             let setup_point = &setup_artifacts[i].g1;
-
-            let mut contribution = blst::blst_p1::default();
-            unsafe {
-                blst::blst_p1_mult(
-                    &mut contribution,
-                    setup_point.as_raw_ptr(),
-                    coefficient_as_scalar.b.as_ptr(),
-                    coefficient_as_scalar.b.len() * 8,
-                );
-            };
-            if *coefficient < 0 {
-                unsafe {
-                    blst::blst_p1_cneg(&mut contribution, true);
-                }
-            }
-            unsafe {
-                blst::blst_p1_add_or_double(&mut commitment, &commitment, &contribution);
-            };
+            let contribution = setup_point.mult(*coefficient);
+            commitment = commitment.add(&contribution);
         }
 
-        Ok(commitment.into())
+        Ok(commitment)
     }
-}
-
-pub fn blst_scalar_from_i128_as_abs(a: i128) -> blst::blst_scalar {
-    let mut padded_bytes = [0u8; 48];
-    padded_bytes[..16].copy_from_slice(&a.unsigned_abs().to_le_bytes());
-    let mut scalar: blst::blst_scalar = blst::blst_scalar::default();
-    unsafe {
-        blst::blst_scalar_from_le_bytes(&mut scalar, padded_bytes.as_ptr(), padded_bytes.len())
-    };
-    scalar
 }
 
 impl std::fmt::Display for Polynomial {
