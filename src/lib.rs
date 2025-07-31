@@ -4,77 +4,95 @@ pub mod trusted_setup;
 
 #[cfg(test)]
 mod tests {
-    use crate::polynomial::Polynomial;
     use crate::trusted_setup::SetupArtifactsGenerator;
+    use crate::{polynomial::Polynomial, trusted_setup::SetupArtifact};
+    use fake::{Fake, Faker};
     use rand::RngCore;
 
-    #[test]
-    fn test_commitment_for_polynomial_degree_one() {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(2).collect();
+    fn run_kate_proof_test(
+        polynomial: &Polynomial,
+        input_point: i128,
+        setup_artifacts: &[SetupArtifact],
+    ) {
+        let commitment = polynomial.commit(setup_artifacts).unwrap();
 
-        // Polynomial to commit is `p(x) = 5x + 10
-        let polynomial = Polynomial::try_from([10, 5].as_slice()).unwrap();
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
-
-        // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
-        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
-        let evaluation = polynomial.evaluate(&1).unwrap();
+        let evaluation = polynomial.evaluate(&input_point).unwrap();
         let proof = polynomial
-            .generates_evaluation_proof(&evaluation, &setup_artifacts)
+            .generates_evaluation_proof(&evaluation, setup_artifacts)
             .unwrap();
         assert!(
             evaluation
-                .verify_proof(&proof, &commitment, &setup_artifacts)
-                .unwrap()
+                .verify_proof(&proof, &commitment, setup_artifacts)
+                .unwrap(),
+            "Verification of the proof fails for polynomial {polynomial} evaluated at point x = {input_point}",
         );
     }
 
-    #[test]
-    fn test_commitment_for_polynomial_degree_two() {
+    fn generate_polynomial(degree: u32) -> Polynomial {
+        let mut coefficients: Vec<i32> = vec![];
+            for _ in 0..(degree + 1) {
+                coefficients.push(Faker.fake());
+            }
+            Polynomial::try_from(
+                coefficients
+                    .into_iter()
+                    .map(i128::from)
+                    .collect::<Vec<i128>>()
+                    .as_slice(),
+            )
+            .unwrap()
+    }
+
+    fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
         let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
         rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
-
-        // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
-        let polynomial = Polynomial::try_from([4, 3, 2].as_slice()).unwrap();
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
-
-        // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
-        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
-        let evaluation = polynomial.evaluate(&2).unwrap();
-        let proof = polynomial
-            .generates_evaluation_proof(&evaluation, &setup_artifacts)
-            .unwrap();
-        assert!(
-            evaluation
-                .verify_proof(&proof, &commitment, &setup_artifacts)
-                .unwrap()
-        );
+        SetupArtifactsGenerator::new(s_bytes)
+            .take((degree + 1) as usize)
+            .collect()
     }
 
     #[test]
-    fn test_commitment_for_polynomial_degree_two_with_negative_coefficients() {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
+    fn test_kate_proof_for_polynomial_degree_one_over_multiple_input() {
+        let setup_artifacts = &generate_setup_artifacts(1);
+        for _ in 0..10 {
+            let polynomial = generate_polynomial(1);
 
-        // Polynomial to commit is `p(x) = 2x^2 - 3x - 1`
-        let polynomial = Polynomial::try_from([-1, -3, 2].as_slice()).unwrap();
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
+            for _ in 0..10 {
+                let input_point: i32 = Faker.fake();
+                run_kate_proof_test(&polynomial, input_point.into(), setup_artifacts);
+            }
+        }
+    }
 
-        // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 - 6 - 1 = 1`
-        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 - 3x - 2) / (x - 2) = (x - 2) * (2x + 1) / (x - 2) = 2x + 1`
-        let evaluation = polynomial.evaluate(&2).unwrap();
-        let proof = polynomial
-            .generates_evaluation_proof(&evaluation, &setup_artifacts)
-            .unwrap();
+    #[test]
+    fn test_kate_proof_for_polynomial_degree_two_over_multiple_input() {
+        let setup_artifacts = &generate_setup_artifacts(2);
+        for _ in 0..10 {
+            let polynomial = generate_polynomial(2);
 
-        assert!(
-            evaluation
-                .verify_proof(&proof, &commitment, &setup_artifacts)
-                .unwrap()
-        );
+            for _ in 0..10 {
+                let input_point: i32 = Faker.fake();
+                run_kate_proof_test(&polynomial, input_point.into(), setup_artifacts);
+            }
+        }
+    }
+
+    #[test]
+    fn test_kate_proof_over_multiple_degree_with_fixed_input() {
+        for _ in 0..10 {
+            let degree: u8 = Faker.fake();
+            if degree == 0 {
+                continue;
+            }
+            let polynomial = generate_polynomial(degree as u32);
+
+            let input_point: u8 = 1;
+
+            run_kate_proof_test(
+                &polynomial,
+                input_point.into(),
+                &generate_setup_artifacts(degree as u32),
+            );
+        }
     }
 }
