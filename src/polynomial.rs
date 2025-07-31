@@ -110,7 +110,7 @@ impl Polynomial {
     ///
     /// * `evaluation` - The evaluation for which the proof is generated
     /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree` artifacts.
-    pub fn generates_evaluation_proof(
+    pub fn generate_evaluation_proof(
         &self,
         evaluation: &Evaluation,
         setup_artifacts: &[SetupArtifact],

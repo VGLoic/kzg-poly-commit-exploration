@@ -18,7 +18,7 @@ mod tests {
 
         let evaluation = polynomial.evaluate(&input_point).unwrap();
         let proof = polynomial
-            .generates_evaluation_proof(&evaluation, setup_artifacts)
+            .generate_evaluation_proof(&evaluation, setup_artifacts)
             .unwrap();
         assert!(
             evaluation

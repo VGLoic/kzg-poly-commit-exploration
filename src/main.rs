@@ -218,7 +218,7 @@ impl Commands {
                 let evaluation = commitment_artifact.polynomial.evaluate(x)?;
                 let proof = commitment_artifact
                     .polynomial
-                    .generates_evaluation_proof(&evaluation, &setup_artifacts)?;
+                    .generate_evaluation_proof(&evaluation, &setup_artifacts)?;
 
                 let evaluation_artifact =
                     serde_json::to_string(&EvaluationArtifact { evaluation, proof })
