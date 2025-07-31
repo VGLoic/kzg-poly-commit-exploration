@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::curves::G1Point;
+use crate::curves::{G2Point, bilinear_map};
 
+use super::curves::G1Point;
 use super::trusted_setup::SetupArtifact;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -32,6 +33,37 @@ impl TryFrom<&[i128]> for Polynomial {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
+pub struct Evaluation {
+    pub point: i128,
+    pub result: i128,
+}
+
+impl Evaluation {
+    /// Verify the Kate proof given a proof, a commitment and the setup artifacts
+    ///
+    /// * `proof` - Evaluation proof
+    /// * `commitment` - Commitment of the underlying polynomial
+    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least 2 artifacts.
+    pub fn verify_proof(
+        &self,
+        proof: &G1Point,
+        commitment: &G1Point,
+        setup_artifacts: &[SetupArtifact],
+    ) -> Result<bool, anyhow::Error> {
+        let lhs = bilinear_map(
+            proof,
+            &setup_artifacts[1].g2.sub(&G2Point::from_i128(self.point)),
+        );
+        let rhs = bilinear_map(
+            &commitment.sub(&G1Point::from_i128(self.result)),
+            &G2Point::from_i128(1),
+        );
+
+        Ok(lhs == rhs)
+    }
+}
+
 impl Polynomial {
     /// Return the degree of the polynomial.
     ///
@@ -55,7 +87,7 @@ impl Polynomial {
     /// Evaluate the polynomial at an input point
     ///
     /// * `x` - Input point
-    pub fn evaluate(&self, x: &i128) -> Result<i128, anyhow::Error> {
+    pub fn evaluate(&self, x: &i128) -> Result<Evaluation, anyhow::Error> {
         let mut evaluation: i128 = 0;
         for (degree, coefficient) in self.coefficients.iter().enumerate() {
             let x_powered = x.checked_pow(degree as u32).ok_or(anyhow::anyhow!(
@@ -68,7 +100,24 @@ impl Polynomial {
                 "[evaluate] Overflow while {evaluation} + {contribution}"
             ))?;
         }
-        Ok(evaluation)
+        Ok(Evaluation {
+            point: *x,
+            result: evaluation,
+        })
+    }
+
+    /// Generates a Kate proof for a given evaluation
+    ///
+    /// * `evaluation` - The evaluation for which the proof is generated
+    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree` artifacts.
+    pub fn generate_evaluation_proof(
+        &self,
+        evaluation: &Evaluation,
+        setup_artifacts: &[SetupArtifact],
+    ) -> Result<G1Point, anyhow::Error> {
+        self.sub(&Polynomial::from_constant(evaluation.result))?
+            .divide_by_root(&evaluation.point)?
+            .commit(setup_artifacts)
     }
 
     /// Subtract a polynomial from the current one
