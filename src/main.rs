@@ -8,14 +8,11 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::{
-    curves::{G1Point, G2Point, bilinear_map},
-    polynomial::Polynomial,
+use kzg_poly_commit_exploration::{
+    curves::G1Point,
+    polynomial::{Evaluation, Polynomial},
+    trusted_setup,
 };
-
-mod curves;
-mod polynomial;
-mod trusted_setup;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -141,14 +138,15 @@ impl Commands {
                 Ok(())
             }
             Commands::Commit { coefficients } => {
-                let polynomial = polynomial::Polynomial::try_from(coefficients.as_slice())?;
+                let polynomial = Polynomial::try_from(coefficients.as_slice())?;
 
                 let polynomial_displayed = polynomial.to_string();
 
                 if polynomial.degree() > MAX_DEGREE {
-                    return Err(
-                        anyhow::anyhow!("Only polynomials up to degree 9 are supported").into(),
-                    );
+                    return Err(anyhow::anyhow!(
+                        "Only polynomials up to degree {MAX_DEGREE} are supported"
+                    )
+                    .into());
                 }
 
                 log::info!(
@@ -217,15 +215,13 @@ impl Commands {
                 let commitment_artifact: CommitmentArtifact =
                     serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
 
-                let y = commitment_artifact.polynomial.evaluate(x)?;
+                let evaluation = commitment_artifact.polynomial.evaluate(x)?;
                 let proof = commitment_artifact
                     .polynomial
-                    .sub(&Polynomial::from_constant(y))?
-                    .divide_by_root(x)?
-                    .commit(&setup_artifacts)?;
+                    .generates_evaluation_proof(&evaluation, &setup_artifacts)?;
 
                 let evaluation_artifact =
-                    serde_json::to_string(&EvaluationArtifact { x: *x, y, proof })
+                    serde_json::to_string(&EvaluationArtifact { evaluation, proof })
                         .map_err(anyhow::Error::from)?;
 
                 if fs::exists(EVALUATION_ARTIFACTS_PATH)? {
@@ -235,8 +231,9 @@ impl Commands {
                 file.write_all(evaluation_artifact.as_bytes())?;
 
                 log::info!(
-                    "Evaluation successful for polynomial: \"P(x) = {}\" at point \"x = {x}\" with \"P({x}) = {y}\"",
-                    commitment_artifact.polynomial
+                    "Evaluation successful for polynomial: \"P(x) = {}\" at point \"x = {x}\" with \"P({x}) = {}\"",
+                    commitment_artifact.polynomial,
+                    evaluation.result
                 );
 
                 Ok(())
@@ -279,20 +276,13 @@ impl Commands {
                 let evaluation_artifact: EvaluationArtifact =
                     serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
 
-                let lhs = bilinear_map(
+                let is_proof_ok = evaluation_artifact.evaluation.verify_proof(
                     &evaluation_artifact.proof,
-                    &setup_artifacts[1]
-                        .g2
-                        .sub(&G2Point::from_i128(evaluation_artifact.x)),
-                );
-                let rhs = bilinear_map(
-                    &commitment_artifact
-                        .commitment
-                        .sub(&G1Point::from_i128(evaluation_artifact.y)),
-                    &G2Point::from_i128(1),
-                );
+                    &commitment_artifact.commitment,
+                    &setup_artifacts,
+                )?;
 
-                if lhs != rhs {
+                if !is_proof_ok {
                     return Err(anyhow::anyhow!(
                         "The proof associated to the evaluation is incorrect."
                     )
@@ -302,9 +292,9 @@ impl Commands {
                 log::info!(
                     "Successfully verified evaluation for polynomial \"P(x) = {}\" at point \"x = {}\" with \"P({}) = {}\"",
                     commitment_artifact.polynomial,
-                    evaluation_artifact.x,
-                    evaluation_artifact.x,
-                    evaluation_artifact.y
+                    evaluation_artifact.evaluation.point,
+                    evaluation_artifact.evaluation.point,
+                    evaluation_artifact.evaluation.result
                 );
 
                 Ok(())
@@ -321,187 +311,6 @@ struct CommitmentArtifact {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EvaluationArtifact {
-    x: i128,
-    y: i128,
+    evaluation: Evaluation,
     proof: G1Point,
-}
-
-#[cfg(test)]
-mod tests {
-    use rand::RngCore;
-
-    use super::curves::{G1Point, G2Point, bilinear_map};
-    use super::polynomial::Polynomial;
-    use super::trusted_setup::SetupArtifactsGenerator;
-
-    #[test]
-    fn test_point_addition_and_scalar_multiplication() {
-        unsafe {
-            let g1 = blst::blst_p1_generator();
-
-            let mut p1_via_addition = blst::blst_p1::default();
-            blst::blst_p1_add_or_double(&mut p1_via_addition, g1, g1);
-
-            let mut p1_via_multiplication = blst::blst_p1::default();
-            let scalar_as_bytes = 2_u8.to_be_bytes();
-            blst::blst_p1_mult(
-                &mut p1_via_multiplication,
-                g1,
-                scalar_as_bytes.as_ptr(),
-                scalar_as_bytes.len() * 8,
-            );
-
-            assert!(blst::blst_p1_in_g1(g1), "g1 must be in the first group");
-            assert_eq!(
-                p1_via_multiplication, p1_via_addition,
-                "results must be the same via multiplication and via addition"
-            );
-            assert_ne!(
-                p1_via_multiplication, *g1,
-                "result must be different than g1"
-            );
-            assert!(
-                blst::blst_p1_in_g1(&p1_via_multiplication),
-                "result must be in first group"
-            );
-        }
-    }
-
-    #[test]
-    fn test_compression_and_serialization() {
-        unsafe {
-            let g1 = blst::blst_p1_generator();
-
-            let mut p1 = blst::blst_p1::default();
-            blst::blst_p1_add_or_double(&mut p1, g1, g1);
-
-            let mut compressed_p1 = [0; 48];
-            blst::blst_p1_compress(compressed_p1.as_mut_ptr(), &p1);
-            let mut uncompressed_p1_affine = blst::blst_p1_affine::default();
-            match blst::blst_p1_uncompress(&mut uncompressed_p1_affine, compressed_p1.as_ptr()) {
-                blst::BLST_ERROR::BLST_SUCCESS => {}
-                other => {
-                    println!("Got error while uncompressing: {other:?}");
-                    panic!("Fail to uncompress")
-                }
-            };
-            let mut uncompressed_p1 = blst::blst_p1::default();
-            blst::blst_p1_from_affine(&mut uncompressed_p1, &uncompressed_p1_affine);
-            assert_eq!(
-                uncompressed_p1, p1,
-                "result after uncompression must be equal to p1"
-            );
-
-            let mut serialized_p1 = [0; 96];
-            blst::blst_p1_serialize(serialized_p1.as_mut_ptr(), &p1);
-            let mut deserialized_p1_affine = blst::blst_p1_affine::default();
-            match blst::blst_p1_deserialize(&mut deserialized_p1_affine, serialized_p1.as_ptr()) {
-                blst::BLST_ERROR::BLST_SUCCESS => {}
-                other => {
-                    println!("Got error while deserializing: {other:?}",);
-                    panic!("Fail to deserialize")
-                }
-            };
-
-            let mut deserialized_p1 = blst::blst_p1::default();
-            blst::blst_p1_from_affine(&mut deserialized_p1, &deserialized_p1_affine);
-            assert_eq!(
-                deserialized_p1, p1,
-                "result after deserialization must be equal to p1"
-            );
-        }
-    }
-
-    #[test]
-    fn test_commitment_for_polynomial_degree_one() {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(2).collect();
-
-        // Polynomial to commit is `p(x) = 5x + 10
-        let polynomial = Polynomial::try_from([10, 5].as_slice()).unwrap();
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
-
-        // We evaluate the polynomial at z = 1: `p(z) = y = p(1) = 15`
-        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (5x - 5) / (x - 1) = 5`
-        let z = 1;
-        let y = polynomial.evaluate(&z).unwrap();
-        let proof = polynomial
-            .sub(&Polynomial::from_constant(y))
-            .unwrap()
-            .divide_by_root(&z)
-            .unwrap()
-            .commit(&setup_artifacts)
-            .unwrap();
-
-        let lhs = bilinear_map(&proof, &setup_artifacts[1].g2.sub(&G2Point::from_i128(z)));
-        let rhs = bilinear_map(
-            &commitment.sub(&G1Point::from_i128(y)),
-            &G2Point::from_i128(1),
-        );
-
-        assert_eq!(lhs, rhs);
-    }
-
-    #[test]
-    fn test_commitment_for_polynomial_degree_two() {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
-
-        // Polynomial to commit is `p(x) = 2x^2 + 3x + 4`
-        let polynomial = Polynomial::try_from([4, 3, 2].as_slice()).unwrap();
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
-
-        // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 + 6 + 4 = 18`
-        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 + 3x - 14) / (x - 2) = (x - 2) * (2x + 7) / (x - 2) = 2x + 7`
-        let z = 2;
-        let y = polynomial.evaluate(&z).unwrap();
-        let proof = polynomial
-            .sub(&Polynomial::from_constant(y))
-            .unwrap()
-            .divide_by_root(&z)
-            .unwrap()
-            .commit(&setup_artifacts)
-            .unwrap();
-
-        let lhs = bilinear_map(&proof, &setup_artifacts[1].g2.sub(&G2Point::from_i128(z)));
-        let rhs = bilinear_map(
-            &commitment.sub(&G1Point::from_i128(y)),
-            &G2Point::from_i128(1),
-        );
-
-        assert_eq!(lhs, rhs);
-    }
-
-    #[test]
-    fn test_commitment_for_polynomial_degree_two_with_negative_coefficients() {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
-        rand::rng().fill_bytes(&mut s_bytes);
-        let setup_artifacts: Vec<_> = SetupArtifactsGenerator::new(s_bytes).take(3).collect();
-
-        // Polynomial to commit is `p(x) = 2x^2 - 3x - 1`
-        let polynomial = Polynomial::try_from([-1, -3, 2].as_slice()).unwrap();
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
-
-        // We evaluate the polynomial at z = 2: `p(z) = y = p(2) = 8 - 6 - 1 = 1`
-        // Quotient polynomial: `q(x) = (p(x) - y) / (x - z) = (2x^2 - 3x - 2) / (x - 2) = (x - 2) * (2x + 1) / (x - 2) = 2x + 1`
-        let z = 2;
-        let y = polynomial.evaluate(&z).unwrap();
-        let proof = polynomial
-            .sub(&Polynomial::from_constant(y))
-            .unwrap()
-            .divide_by_root(&z)
-            .unwrap()
-            .commit(&setup_artifacts)
-            .unwrap();
-
-        let lhs = bilinear_map(&proof, &setup_artifacts[1].g2.sub(&G2Point::from_i128(z)));
-        let rhs = bilinear_map(
-            &commitment.sub(&G1Point::from_i128(y)),
-            &G2Point::from_i128(1),
-        );
-
-        assert_eq!(lhs, rhs);
-    }
 }
