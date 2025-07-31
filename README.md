@@ -377,7 +377,7 @@ I moved a few things around in the implementation, in particular:
 - the `Evaluation` struct has been introduced in order to abstract the result of a polynomial evaluation,
 - the proof generation and verification for a polynomial evaluation have been moved to `Evaluation::generate_proof` and `Evaluation::verify_proof`.
 
-The tests are now run using random values. From this, I discovered a lot of overflows errors for polynomial with high degrees or high coefficients. I need to dig a bit on how to solve this properly.
+The tests are now run using random values. From this, I discovered a lot of overflow errors for polynomial with high degrees or high coefficients. I need to dig a bit on how to solve this properly.
 
 
 ## Repository setup
