@@ -30,17 +30,17 @@ mod tests {
 
     fn generate_polynomial(degree: u32) -> Polynomial {
         let mut coefficients: Vec<i32> = vec![];
-            for _ in 0..(degree + 1) {
-                coefficients.push(Faker.fake());
-            }
-            Polynomial::try_from(
-                coefficients
-                    .into_iter()
-                    .map(i128::from)
-                    .collect::<Vec<i128>>()
-                    .as_slice(),
-            )
-            .unwrap()
+        for _ in 0..(degree + 1) {
+            coefficients.push(Faker.fake());
+        }
+        Polynomial::try_from(
+            coefficients
+                .into_iter()
+                .map(i128::from)
+                .collect::<Vec<i128>>()
+                .as_slice(),
+        )
+        .unwrap()
     }
 
     fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
@@ -51,6 +51,7 @@ mod tests {
             .collect()
     }
 
+    // TODO: Testing indicates some limitations on the possible values for the coefficients and the input points. There is a need to fix this and increase the coverage of these tests.
     #[test]
     fn test_kate_proof_for_polynomial_degree_one_over_multiple_input() {
         let setup_artifacts = &generate_setup_artifacts(1);
