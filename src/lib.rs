@@ -17,8 +17,8 @@ mod tests {
         let commitment = polynomial.commit(setup_artifacts).unwrap();
 
         let evaluation = polynomial.evaluate(&input_point).unwrap();
-        let proof = polynomial
-            .generate_evaluation_proof(&evaluation, setup_artifacts)
+        let proof = evaluation
+            .generate_proof(polynomial, setup_artifacts)
             .unwrap();
         assert!(
             evaluation

@@ -40,6 +40,21 @@ pub struct Evaluation {
 }
 
 impl Evaluation {
+    /// Generates a Kate proof for a given evaluation
+    ///
+    /// * `polynomial` - The polynomial associated with the evaluation
+    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree` artifacts.
+    pub fn generate_proof(
+        &self,
+        polynomial: &Polynomial,
+        setup_artifacts: &[SetupArtifact],
+    ) -> Result<G1Point, anyhow::Error> {
+        polynomial
+            .sub(&Polynomial::from_constant(self.result))?
+            .divide_by_root(&self.point)?
+            .commit(setup_artifacts)
+    }
+
     /// Verify the Kate proof given a proof, a commitment and the setup artifacts
     ///
     /// * `proof` - Evaluation proof
@@ -104,20 +119,6 @@ impl Polynomial {
             point: *x,
             result: evaluation,
         })
-    }
-
-    /// Generates a Kate proof for a given evaluation
-    ///
-    /// * `evaluation` - The evaluation for which the proof is generated
-    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree` artifacts.
-    pub fn generate_evaluation_proof(
-        &self,
-        evaluation: &Evaluation,
-        setup_artifacts: &[SetupArtifact],
-    ) -> Result<G1Point, anyhow::Error> {
-        self.sub(&Polynomial::from_constant(evaluation.result))?
-            .divide_by_root(&evaluation.point)?
-            .commit(setup_artifacts)
     }
 
     /// Subtract a polynomial from the current one
