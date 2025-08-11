@@ -111,6 +111,7 @@ mod tests {
         } else {
             let unsigned_a_le_bytes = a.unsigned_abs().to_le_bytes();
             let r_be_bytes = hex::decode(R_AS_HEX).unwrap();
+            // Always safe to do as R is bigger than i128 maximum value
             let expected_big_uint =
                 BigUint::from_bytes_be(&r_be_bytes) - BigUint::from_bytes_le(&unsigned_a_le_bytes);
             expected_le_bytes[..].copy_from_slice(expected_big_uint.to_bytes_le().as_slice());
