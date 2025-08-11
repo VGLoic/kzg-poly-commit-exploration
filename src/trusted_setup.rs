@@ -1,9 +1,9 @@
 use serde::{self, Deserialize, Serialize};
 
 use super::{
+    curves,
     curves::{G1Point, G2Point},
     scalar::Scalar,
-    curves
 };
 
 #[derive(Debug)]
