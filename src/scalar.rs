@@ -114,6 +114,7 @@ mod tests {
             // Always safe to do as R is bigger than i128 maximum value
             let expected_big_uint =
                 BigUint::from_bytes_be(&r_be_bytes) - BigUint::from_bytes_le(&unsigned_a_le_bytes);
+            // It will always fit in 32 bytes as R fits in 32 bytes and is in any case larger than the unsigned part of the input
             expected_le_bytes[..].copy_from_slice(expected_big_uint.to_bytes_le().as_slice());
         }
         assert_eq!(recovered_le_bytes, expected_le_bytes);
