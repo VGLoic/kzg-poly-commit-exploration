@@ -379,6 +379,9 @@ I moved a few things around in the implementation, in particular:
 
 The tests are now run using random values. From this, I discovered a lot of overflow errors for polynomial with high degrees or high coefficients. I need to dig a bit on how to solve this properly.
 
+### Scalars
+
+I originally thought that the secret, the power of the secret and the polynomial coefficients should be in the prime field `F_q`. I understood that I was wrong and that these quantities are actually living in `F_r` the prime field built associated to the subgroups we want to target. Instead of the 48 bytes I was previously using, I am left with 32, and all the operations are made in the `F_r` group. I still need to find a proper explanation somewhere in the documentation for this.
 
 ## Repository setup
 
