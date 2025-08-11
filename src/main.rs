@@ -118,7 +118,7 @@ impl Commands {
                 }
                 let mut file = fs::File::create(SETUP_ARTIFACTS_PATH)?;
 
-                let mut s_be_bytes = [0; 48];
+                let mut s_be_bytes = [0; 32];
                 rand::rng().fill_bytes(&mut s_be_bytes);
 
                 let setup_artifacts: Vec<_> =

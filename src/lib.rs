@@ -1,5 +1,6 @@
 pub mod curves;
 pub mod polynomial;
+pub mod scalar;
 pub mod trusted_setup;
 
 #[cfg(test)]
@@ -44,7 +45,7 @@ mod tests {
     }
 
     fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
-        let mut s_bytes = [0; 48]; // Field elements are encoded in big endian form with 48 bytes
+        let mut s_bytes = [0; 32]; // Secret is a 256-bit scalar
         rand::rng().fill_bytes(&mut s_bytes);
         SetupArtifactsGenerator::new(s_bytes)
             .take((degree + 1) as usize)

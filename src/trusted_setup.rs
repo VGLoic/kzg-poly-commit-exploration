@@ -1,24 +1,29 @@
-use num_bigint::BigUint;
 use serde::{self, Deserialize, Serialize};
 
-use super::curves;
+use super::{
+    curves,
+    curves::{G1Point, G2Point},
+    scalar::Scalar,
+};
 
 #[derive(Debug)]
 pub struct SetupArtifactsGenerator {
-    secret: BigUint,
+    secret: Scalar,
     is_at_power_zero: bool,
-    current_s_powered: BigUint,
+    current_s_powered: Scalar,
 }
 
 impl SetupArtifactsGenerator {
     /// Creates a new generator for trusted setup artifacts
     ///
     /// * `secret` - Secret used to generate artifacts, in big endian bytes
-    pub fn new(secret: [u8; 48]) -> Self {
+    pub fn new(secret: [u8; 32]) -> Self {
+        let mut one_le_bytes = [0; 32];
+        one_le_bytes[0] = 1;
         Self {
-            secret: BigUint::from_bytes_be(&secret),
+            secret: Scalar::from_be_bytes(secret),
             is_at_power_zero: true,
-            current_s_powered: BigUint::from(1u8),
+            current_s_powered: Scalar::from_le_bytes(one_le_bytes),
         }
     }
 }
@@ -37,29 +42,22 @@ impl Iterator for SetupArtifactsGenerator {
             self.is_at_power_zero = false;
 
             return Some(SetupArtifact {
-                g1: unsafe { *blst::blst_p1_generator() }.into(),
-                g2: unsafe { *blst::blst_p2_generator() }.into(),
+                g1: G1Point::from_i128(1),
+                g2: G2Point::from_i128(1),
             });
         }
 
-        self.current_s_powered *= &self.secret;
+        self.current_s_powered = self.current_s_powered.mul(&self.secret);
 
-        let s_powered_be_bytes = self.current_s_powered.to_bytes_be();
-        let mut s_powered_as_scalar = blst::blst_scalar::default();
-        unsafe {
-            blst::blst_scalar_from_be_bytes(
-                &mut s_powered_as_scalar,
-                s_powered_be_bytes.as_ptr(),
-                s_powered_be_bytes.len(),
-            );
-        };
+        let s_powered_le_bytes = self.current_s_powered.to_le_bytes();
+
         let mut g1_artifact = blst::blst_p1::default();
         unsafe {
             blst::blst_p1_mult(
                 &mut g1_artifact,
                 blst::blst_p1_generator(),
-                s_powered_as_scalar.b.as_ptr(),
-                s_powered_as_scalar.b.len() * 8,
+                s_powered_le_bytes.as_ptr(),
+                s_powered_le_bytes.len() * 8,
             );
         };
 
@@ -68,8 +66,8 @@ impl Iterator for SetupArtifactsGenerator {
             blst::blst_p2_mult(
                 &mut g2_artifact,
                 blst::blst_p2_generator(),
-                s_powered_as_scalar.b.as_ptr(),
-                s_powered_as_scalar.b.len() * 8,
+                s_powered_le_bytes.as_ptr(),
+                s_powered_le_bytes.len() * 8,
             );
         };
 
