@@ -7,10 +7,12 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.98"
+atoi = "2.0.0"
 blst = { version = "0.3.15", features = [] }
 clap = { version = "4.5.41", features = ["derive"] }
 dotenvy = "0.15.7"
 log = "0.4.27"
+num-bigint = "0.4.6"
 rand = "0.9.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
@@ -19,5 +21,4 @@ thiserror = "2.0.12"
 
 [dev-dependencies]
 fake = "4.3.0"
-num-bigint = "0.4.6"
 hex = "0.4.3"

@@ -1,4 +1,12 @@
-#[derive(Debug)]
+use std::fmt::Display;
+
+use num_bigint::BigUint;
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Visitor},
+};
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Scalar {
     as_fr: blst::blst_fr,
 }
@@ -90,6 +98,103 @@ impl Scalar {
             blst::blst_fr_mul(&mut out, &self.as_fr, &a.as_fr);
         };
         Self { as_fr: out }
+    }
+
+    pub fn pow(&self, n: usize) -> Self {
+        let mut out = Scalar::from_i128(1).as_fr;
+        for _ in 0..n {
+            unsafe {
+                blst::blst_fr_mul(&mut out, &out, &self.as_fr);
+            }
+        }
+        Scalar { as_fr: out }
+    }
+
+    pub fn add(&self, a: &Self) -> Self {
+        let mut out = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_add(&mut out, &self.as_fr, &a.as_fr);
+        }
+        Scalar { as_fr: out }
+    }
+
+    pub fn sub(&self, a: &Self) -> Self {
+        let mut out = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_sub(&mut out, &self.as_fr, &a.as_fr);
+        }
+        Scalar { as_fr: out }
+    }
+
+    pub fn neg(&self) -> Self {
+        let mut out = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_cneg(&mut out, &self.as_fr, true);
+        }
+        Scalar { as_fr: out }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.as_fr == blst::blst_fr::default()
+    }
+}
+
+impl Serialize for Scalar {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(&self.to_le_bytes())
+    }
+}
+
+impl<'de> Deserialize<'de> for Scalar {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ScalarVisitor;
+
+        impl<'de> Visitor<'de> for ScalarVisitor {
+            type Value = Scalar;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Sequence of u8")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut elements: Vec<u8> = vec![];
+
+                while let Some(a) = seq.next_element()? {
+                    elements.push(a)
+                }
+
+                if elements.len() != 32 {
+                    return Err(de::Error::custom(format!(
+                        "Invalid byte array, expected length 32, got {}",
+                        elements.len()
+                    )));
+                }
+
+                let mut le_bytes = [0u8; 32];
+                le_bytes.copy_from_slice(&elements[0..32]);
+
+                Ok(Scalar::from_le_bytes(le_bytes))
+            }
+        }
+
+        deserializer.deserialize_seq(ScalarVisitor)
+    }
+}
+
+impl Display for Scalar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // REMIND ME
+        let big_uint = BigUint::from_bytes_le(&self.to_le_bytes());
+        write!(f, "{big_uint}")
     }
 }
 

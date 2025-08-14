@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use crate::curves::{G2Point, bilinear_map};
-
-use super::curves::G1Point;
-use super::trusted_setup::SetupArtifact;
+use super::{
+    curves::{G1Point, G2Point, bilinear_map},
+    scalar::Scalar,
+    trusted_setup::SetupArtifact,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Polynomial {
-    coefficients: Vec<i128>,
+    coefficients: Vec<Scalar>,
 }
 
 impl TryFrom<&[i128]> for Polynomial {
@@ -21,22 +22,36 @@ impl TryFrom<&[i128]> for Polynomial {
             ));
         }
 
-        let mut coefficients = value.to_vec();
-
-        while let Some(last_value) = coefficients.last()
-            && *last_value == 0
-        {
-            coefficients.pop();
+        let mut coefficients: Vec<Scalar> = vec![];
+        let mut is_empty = true;
+        for v in value.iter().rev() {
+            if is_empty {
+                if *v == 0 {
+                    continue;
+                } else {
+                    is_empty = false;
+                }
+            }
+            coefficients.push(Scalar::from_i128(*v));
         }
+        coefficients.reverse();
+
+        // let mut coefficients = value.to_vec();
+
+        // while let Some(last_value) = coefficients.last()
+        //     && *last_value == 0
+        // {
+        //     coefficients.pop();
+        // }
 
         Ok(Polynomial { coefficients })
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Evaluation {
-    pub point: i128,
-    pub result: i128,
+    pub point: Scalar,
+    pub result: Scalar,
 }
 
 impl Evaluation {
@@ -50,7 +65,7 @@ impl Evaluation {
         setup_artifacts: &[SetupArtifact],
     ) -> Result<G1Point, anyhow::Error> {
         polynomial
-            .sub(&Polynomial::from_constant(self.result))?
+            .sub(&Polynomial::from_constant(self.result.clone()))?
             .divide_by_root(&self.point)?
             .commit(setup_artifacts)
     }
@@ -68,10 +83,12 @@ impl Evaluation {
     ) -> Result<bool, anyhow::Error> {
         let lhs = bilinear_map(
             proof,
-            &setup_artifacts[1].g2.sub(&G2Point::from_i128(self.point)),
+            &setup_artifacts[1]
+                .g2
+                .sub(&G2Point::from_scalar(self.point.clone())),
         );
         let rhs = bilinear_map(
-            &commitment.sub(&G1Point::from_i128(self.result)),
+            &commitment.sub(&G1Point::from_scalar(self.result.clone())),
             &G2Point::from_i128(1),
         );
 
@@ -93,7 +110,7 @@ impl Polynomial {
     /// Creates a polynomial of order 0 from a constant
     ///
     /// * `a` - Constant
-    pub fn from_constant(a: i128) -> Polynomial {
+    pub fn from_constant(a: Scalar) -> Polynomial {
         Polynomial {
             coefficients: vec![a],
         }
@@ -103,20 +120,15 @@ impl Polynomial {
     ///
     /// * `x` - Input point
     pub fn evaluate(&self, x: &i128) -> Result<Evaluation, anyhow::Error> {
-        let mut evaluation: i128 = 0;
+        let mut evaluation = Scalar::from_i128(0);
+        let x_scalar = Scalar::from_i128(*x);
         for (degree, coefficient) in self.coefficients.iter().enumerate() {
-            let x_powered = x.checked_pow(degree as u32).ok_or(anyhow::anyhow!(
-                "[evaluate] Overflow while pow {x}^{degree}"
-            ))?;
-            let contribution = coefficient.checked_mul(x_powered).ok_or(anyhow::anyhow!(
-                "[evaluate] Overflow while {coefficient} * {x_powered}"
-            ))?;
-            evaluation = evaluation.checked_add(contribution).ok_or(anyhow::anyhow!(
-                "[evaluate] Overflow while {evaluation} + {contribution}"
-            ))?;
+            let x_powered = x_scalar.pow(degree);
+            let contribution = coefficient.mul(&x_powered);
+            evaluation = evaluation.add(&contribution);
         }
         Ok(Evaluation {
-            point: *x,
+            point: x_scalar,
             result: evaluation,
         })
     }
@@ -128,49 +140,37 @@ impl Polynomial {
         let a_length = self.coefficients.len();
         let b_length = p.coefficients.len();
 
-        let mut coefficients: Vec<i128>;
+        let mut coefficients: Vec<Scalar>;
         if a_length > b_length {
             coefficients = self.coefficients.clone();
             for (i, rhs) in p.coefficients.iter().enumerate() {
-                coefficients[i] = coefficients[i].checked_sub(*rhs).ok_or(anyhow::anyhow!(
-                    "[sub] Overflow while {} - {rhs}",
-                    coefficients[i]
-                ))?;
+                coefficients[i] = coefficients[i].sub(rhs);
             }
         } else {
-            coefficients = p
-                .coefficients
-                .iter()
-                .map(|x| {
-                    x.checked_neg()
-                        .ok_or(anyhow::anyhow!("[sub] Overflow while negating {x}"))
-                })
-                .collect::<Result<Vec<_>, anyhow::Error>>()?;
+            coefficients = p.coefficients.iter().map(|x| x.neg()).collect();
             for (i, lhs) in self.coefficients.iter().enumerate() {
-                coefficients[i] = lhs.checked_add(coefficients[i]).ok_or(anyhow::anyhow!(
-                    "[sub] Overflow while {lhs} - {}",
-                    coefficients[i]
-                ))?;
+                coefficients[i] = lhs.add(&coefficients[i]);
             }
         }
-
-        Polynomial::try_from(coefficients.as_slice())
+        let result = Polynomial { coefficients };
+        println!("\"{self}\" - \"{p}\" = \"{result}\"");
+        Ok(result)
     }
 
     /// Divides the polynomial by the divider polynomial `x - root` and returns the quotient polynomial.
     ///
     /// * `root` - Root of the polynomial
-    pub fn divide_by_root(&self, root: &i128) -> Result<Polynomial, anyhow::Error> {
+    pub fn divide_by_root(&self, root: &Scalar) -> Result<Polynomial, anyhow::Error> {
         let higher_order_coefficient = match self.coefficients.last() {
             None => {
                 return Ok(Polynomial {
                     coefficients: vec![],
                 });
             }
-            Some(v) => v,
+            Some(v) => v.clone(),
         };
         if self.coefficients.len() == 1 {
-            if *higher_order_coefficient == 0 {
+            if higher_order_coefficient.is_zero() {
                 return Ok(Polynomial {
                     coefficients: vec![],
                 });
@@ -178,46 +178,33 @@ impl Polynomial {
                 return Err(anyhow::anyhow!("Unable to divide a constant polynomial"));
             }
         }
-        let mut quotient_coefficients_reversed = vec![*higher_order_coefficient];
+        // REMIND ME
+        let mut quotient_coefficients_reversed = vec![higher_order_coefficient.clone()];
         // We skip the higher degree as it is handled at initialisation, and we skip the degree zero as it is checked at the end
-        let mut last_coefficient_found = *higher_order_coefficient;
+        let mut last_coefficient_found = higher_order_coefficient;
         for i in (1..self.coefficients.len() - 1).rev() {
-            let coefficient = self.coefficients[i];
-            let contribution_from_root =
-                root.checked_mul(last_coefficient_found)
-                    .ok_or(anyhow::anyhow!(
-                        "[divide_by_root] Overflow while {root} * {last_coefficient_found}"
-                    ))?;
-            last_coefficient_found =
-                coefficient
-                    .checked_add(contribution_from_root)
-                    .ok_or(anyhow::anyhow!(
-                        "[divide_by_root] Overflow while {coefficient} + {contribution_from_root}"
-                    ))?;
+            let coefficient = &self.coefficients[i];
+            let contribution_from_root = root.mul(&last_coefficient_found);
+            last_coefficient_found = coefficient.add(&contribution_from_root);
 
-            quotient_coefficients_reversed.push(last_coefficient_found);
+            quotient_coefficients_reversed.push(last_coefficient_found.clone());
         }
 
         quotient_coefficients_reversed.reverse();
 
         // We check that the constant term is correct: -1 * root * constant term of q = constant term of p
-        let rebuilt_constant_term = root
-            .checked_mul(quotient_coefficients_reversed[0])
-            .ok_or(anyhow::anyhow!(
-                "[divide_by_root] Overflow while {root} * {}",
-                quotient_coefficients_reversed[0]
-            ))?
-            .checked_neg()
-            .ok_or(anyhow::anyhow!(
-                "[divide_by_root] Overflow while taking the negative of rebuilt constant term"
-            ))?;
+        let rebuilt_constant_term = root.mul(&quotient_coefficients_reversed[0]).neg();
+
+        println!("rebuilt_constant_term: {rebuilt_constant_term}");
         if rebuilt_constant_term != self.coefficients[0] {
             return Err(anyhow::anyhow!(
                 "[divide_by_root] Fail to divide the polynomial by a root, constant terms do not add up"
             ));
         }
 
-        Polynomial::try_from(quotient_coefficients_reversed.as_slice())
+        Ok(Polynomial {
+            coefficients: quotient_coefficients_reversed,
+        })
     }
 
     /// Generate the G1Point representing the commit to the polynomial using setup artifacts.
@@ -233,7 +220,7 @@ impl Polynomial {
         let mut commitment = G1Point::from_i128(0);
         for (i, coefficient) in self.coefficients.iter().enumerate() {
             let setup_point = &setup_artifacts[i].g1;
-            let contribution = setup_point.mult(*coefficient);
+            let contribution = setup_point.mult(coefficient);
             commitment = commitment.add(&contribution);
         }
 
@@ -247,42 +234,27 @@ impl std::fmt::Display for Polynomial {
             return write!(f, "0");
         }
 
-        let higher_degree_coefficient = self.coefficients[self.coefficients.len() - 1];
-        let mut displayed = format!(
-            "{}{}",
-            if higher_degree_coefficient < 0 {
-                "-"
-            } else {
-                ""
-            },
-            display_non_zero_coefficient(higher_degree_coefficient, self.coefficients.len() - 1)
-        );
+        let higher_degree_coefficient = &self.coefficients[self.coefficients.len() - 1];
+        let mut displayed =
+            display_non_zero_coefficient(higher_degree_coefficient, self.coefficients.len() - 1);
 
         for i in (0..(self.coefficients.len() - 1)).rev() {
-            let c = self.coefficients[i];
-            if c == 0 {
+            let c = &self.coefficients[i];
+            if c.is_zero() {
                 continue;
             }
-            displayed += format!(
-                " {} {}",
-                if c > 0 { "+" } else { "-" },
-                display_non_zero_coefficient(c, i)
-            )
-            .as_str();
+            displayed += format!(" + {}", display_non_zero_coefficient(c, i)).as_str();
         }
 
         write!(f, "{displayed}")
     }
 }
 
-fn display_non_zero_coefficient(c: i128, degree: usize) -> String {
+fn display_non_zero_coefficient(c: &Scalar, degree: usize) -> String {
     let degree_string = match degree {
         0 => "".to_owned(),
         1 => "x".to_owned(),
         other => format!("x^{other}"),
     };
-    if degree > 0 && (c == 1 || c == -1) {
-        return degree_string;
-    }
-    format!("{}{degree_string}", c.abs())
+    format!("{c}{degree_string}")
 }

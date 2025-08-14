@@ -219,9 +219,12 @@ impl Commands {
                 let proof =
                     evaluation.generate_proof(&commitment_artifact.polynomial, &setup_artifacts)?;
 
-                let evaluation_artifact =
-                    serde_json::to_string(&EvaluationArtifact { evaluation, proof })
-                        .map_err(anyhow::Error::from)?;
+                // REMIND ME
+                let evaluation_artifact = serde_json::to_string(&EvaluationArtifact {
+                    evaluation: evaluation.clone(),
+                    proof,
+                })
+                .map_err(anyhow::Error::from)?;
 
                 if fs::exists(EVALUATION_ARTIFACTS_PATH)? {
                     fs::remove_file(EVALUATION_ARTIFACTS_PATH)?;
