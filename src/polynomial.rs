@@ -36,13 +36,34 @@ impl TryFrom<&[i128]> for Polynomial {
         }
         coefficients.reverse();
 
-        // let mut coefficients = value.to_vec();
+        Ok(Polynomial { coefficients })
+    }
+}
 
-        // while let Some(last_value) = coefficients.last()
-        //     && *last_value == 0
-        // {
-        //     coefficients.pop();
-        // }
+impl TryFrom<&[Scalar]> for Polynomial {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &[Scalar]) -> Result<Self, Self::Error> {
+        if value.len() > u32::MAX as usize {
+            return Err(anyhow::anyhow!(
+                "Too many coefficients for polynomial, only 2**32 - 1 coefficients is supported. Got {}",
+                value.len()
+            ));
+        }
+
+        let mut coefficients: Vec<Scalar> = vec![];
+        let mut is_empty = true;
+        for v in value.iter().rev() {
+            if is_empty {
+                if v.is_zero() {
+                    continue;
+                } else {
+                    is_empty = false;
+                }
+            }
+            coefficients.push(v.clone());
+        }
+        coefficients.reverse();
 
         Ok(Polynomial { coefficients })
     }
@@ -152,9 +173,7 @@ impl Polynomial {
                 coefficients[i] = lhs.add(&coefficients[i]);
             }
         }
-        let result = Polynomial { coefficients };
-        println!("\"{self}\" - \"{p}\" = \"{result}\"");
-        Ok(result)
+        Polynomial::try_from(coefficients.as_slice())
     }
 
     /// Divides the polynomial by the divider polynomial `x - root` and returns the quotient polynomial.
@@ -202,9 +221,7 @@ impl Polynomial {
             ));
         }
 
-        Ok(Polynomial {
-            coefficients: quotient_coefficients_reversed,
-        })
+        Polynomial::try_from(quotient_coefficients_reversed.as_slice())
     }
 
     /// Generate the G1Point representing the commit to the polynomial using setup artifacts.
