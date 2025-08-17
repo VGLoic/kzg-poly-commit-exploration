@@ -7,7 +7,6 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.98"
-atoi = "2.0.0"
 blst = { version = "0.3.15", features = [] }
 clap = { version = "4.5.41", features = ["derive"] }
 dotenvy = "0.15.7"
