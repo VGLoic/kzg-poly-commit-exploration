@@ -10,13 +10,6 @@ use crate::scalar::Scalar;
 #[derive(Debug)]
 pub struct G1Point(blst::blst_p1);
 
-impl Deref for G1Point {
-    type Target = blst::blst_p1;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl From<blst::blst_p1> for G1Point {
     fn from(value: blst::blst_p1) -> Self {
         G1Point(value)

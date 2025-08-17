@@ -7,9 +7,7 @@ use serde::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Scalar {
-    as_fr: blst::blst_fr,
-}
+pub struct Scalar(blst::blst_fr);
 
 const R_AS_HEX: &str = "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
 
@@ -38,7 +36,7 @@ impl From<i128> for Scalar {
             blst::blst_fr_from_hexascii(&mut fr, unsigned_hexa.as_ptr());
         }
         if value > 0 {
-            return Self { as_fr: fr };
+            return Self(fr);
         }
 
         let mut r = blst::blst_fr::default();
@@ -47,7 +45,7 @@ impl From<i128> for Scalar {
             blst::blst_fr_sub(&mut fr, &r, &fr);
         };
 
-        Self { as_fr: fr }
+        Self(fr)
     }
 }
 
@@ -61,7 +59,7 @@ impl Scalar {
         unsafe {
             blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
         }
-        Self { as_fr: fr }
+        Self(fr)
     }
 
     /// Creates a scalar from big endian bytes
@@ -73,7 +71,7 @@ impl Scalar {
         unsafe {
             blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
         }
-        Self { as_fr: fr }
+        Self(fr)
     }
 
     /// Creates a scalar from a i128
@@ -87,7 +85,7 @@ impl Scalar {
     pub fn to_le_bytes(&self) -> [u8; 32] {
         let mut scalar = blst::blst_scalar::default();
         unsafe {
-            blst::blst_scalar_from_fr(&mut scalar, &self.as_fr);
+            blst::blst_scalar_from_fr(&mut scalar, &self.0);
         }
         let mut le_bytes = [0u8; 32];
         unsafe {
@@ -100,7 +98,7 @@ impl Scalar {
     pub fn to_be_bytes(&self) -> [u8; 32] {
         let mut scalar = blst::blst_scalar::default();
         unsafe {
-            blst::blst_scalar_from_fr(&mut scalar, &self.as_fr);
+            blst::blst_scalar_from_fr(&mut scalar, &self.0);
         }
         let mut be_bytes = [0u8; 32];
         unsafe {
@@ -115,22 +113,22 @@ impl Scalar {
     pub fn mul(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_mul(&mut out, &self.as_fr, &other.as_fr);
+            blst::blst_fr_mul(&mut out, &self.0, &other.0);
         };
-        Self { as_fr: out }
+        Self(out)
     }
 
     /// Returns a new scalar obtained by the multiplication of self by itself a given number of times
     ///
     /// - `n` - Number of times to multiply self by itself
     pub fn pow(&self, n: usize) -> Self {
-        let mut out = Scalar::from_i128(1).as_fr;
+        let mut out = Scalar::from_i128(1).0;
         for _ in 0..n {
             unsafe {
-                blst::blst_fr_mul(&mut out, &out, &self.as_fr);
+                blst::blst_fr_mul(&mut out, &out, &self.0);
             }
         }
-        Scalar { as_fr: out }
+        Scalar(out)
     }
 
     /// Returns a new scalar obtained by the addition of self and another scalar
@@ -139,9 +137,9 @@ impl Scalar {
     pub fn add(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_add(&mut out, &self.as_fr, &other.as_fr);
+            blst::blst_fr_add(&mut out, &self.0, &other.0);
         }
-        Scalar { as_fr: out }
+        Scalar(out)
     }
 
     /// Returns a new scalar obtained by the subtraction of self by another scalar
@@ -150,23 +148,23 @@ impl Scalar {
     pub fn sub(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_sub(&mut out, &self.as_fr, &other.as_fr);
+            blst::blst_fr_sub(&mut out, &self.0, &other.0);
         }
-        Scalar { as_fr: out }
+        Scalar(out)
     }
 
     /// Returns a new scalar obtained by the negation of self
     pub fn neg(&self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_cneg(&mut out, &self.as_fr, true);
+            blst::blst_fr_cneg(&mut out, &self.0, true);
         }
-        Scalar { as_fr: out }
+        Scalar(out)
     }
 
-    /// Returns if self is the representation of zero
+    /// Returns true if self is the representation of zero, false otherwise
     pub fn is_zero(&self) -> bool {
-        self.as_fr == blst::blst_fr::default()
+        self.0 == blst::blst_fr::default()
     }
 }
 

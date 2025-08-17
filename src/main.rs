@@ -222,7 +222,6 @@ impl Commands {
                 let proof =
                     evaluation.generate_proof(&commitment_artifact.polynomial, &setup_artifacts)?;
 
-                // REMIND ME
                 let evaluation_artifact = serde_json::to_string(&EvaluationArtifact {
                     evaluation: evaluation.clone(),
                     proof,
