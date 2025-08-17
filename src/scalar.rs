@@ -28,34 +28,16 @@ fn be_bytes_to_hex(a: &[u8]) -> String {
     out
 }
 
-impl Scalar {
-    pub fn from_le_bytes(b: [u8; 32]) -> Self {
-        let hexa = le_bytes_to_hex(&b);
-        let mut fr = blst::blst_fr::default();
-        unsafe {
-            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
-        }
-        Self { as_fr: fr }
-    }
-
-    pub fn from_be_bytes(b: [u8; 32]) -> Self {
-        let mut fr = blst::blst_fr::default();
-        let hexa = be_bytes_to_hex(&b);
-        unsafe {
-            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
-        }
-        Self { as_fr: fr }
-    }
-
-    pub fn from_i128(a: i128) -> Self {
+impl From<i128> for Scalar {
+    fn from(value: i128) -> Self {
         let mut unsigned_le_bytes = [0u8; 32];
-        unsigned_le_bytes[..16].copy_from_slice(&a.unsigned_abs().to_le_bytes());
+        unsigned_le_bytes[..16].copy_from_slice(&value.unsigned_abs().to_le_bytes());
         let unsigned_hexa = le_bytes_to_hex(&unsigned_le_bytes);
         let mut fr = blst::blst_fr::default();
         unsafe {
             blst::blst_fr_from_hexascii(&mut fr, unsigned_hexa.as_ptr());
         }
-        if a > 0 {
+        if value > 0 {
             return Self { as_fr: fr };
         }
 
@@ -67,7 +49,41 @@ impl Scalar {
 
         Self { as_fr: fr }
     }
+}
 
+impl Scalar {
+    /// Creates a scalar from low endian bytes
+    ///
+    /// * `b` - Low endian byte array of length 32
+    pub fn from_le_bytes(b: [u8; 32]) -> Self {
+        let hexa = le_bytes_to_hex(&b);
+        let mut fr = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
+        }
+        Self { as_fr: fr }
+    }
+
+    /// Creates a scalar from big endian bytes
+    ///
+    /// * `b` - Big endian byte array of length 32
+    pub fn from_be_bytes(b: [u8; 32]) -> Self {
+        let mut fr = blst::blst_fr::default();
+        let hexa = be_bytes_to_hex(&b);
+        unsafe {
+            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
+        }
+        Self { as_fr: fr }
+    }
+
+    /// Creates a scalar from a i128
+    ///
+    /// * `a` - i128 value
+    pub fn from_i128(a: i128) -> Self {
+        Self::from(a)
+    }
+
+    /// Returns the low endian bytes representation of the scalar
     pub fn to_le_bytes(&self) -> [u8; 32] {
         let mut scalar = blst::blst_scalar::default();
         unsafe {
@@ -80,6 +96,7 @@ impl Scalar {
         le_bytes
     }
 
+    /// Returns the big endian bytes representation of the scalar
     pub fn to_be_bytes(&self) -> [u8; 32] {
         let mut scalar = blst::blst_scalar::default();
         unsafe {
@@ -92,14 +109,20 @@ impl Scalar {
         be_bytes
     }
 
-    pub fn mul(&self, a: &Self) -> Self {
+    /// Returns a new scalar obtained by the multiplication of self and another scalar
+    ///
+    /// - `other` - Other scalar to perform the operation
+    pub fn mul(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_mul(&mut out, &self.as_fr, &a.as_fr);
+            blst::blst_fr_mul(&mut out, &self.as_fr, &other.as_fr);
         };
         Self { as_fr: out }
     }
 
+    /// Returns a new scalar obtained by the multiplication of self by itself a given number of times
+    ///
+    /// - `n` - Number of times to multiply self by itself
     pub fn pow(&self, n: usize) -> Self {
         let mut out = Scalar::from_i128(1).as_fr;
         for _ in 0..n {
@@ -110,22 +133,29 @@ impl Scalar {
         Scalar { as_fr: out }
     }
 
-    pub fn add(&self, a: &Self) -> Self {
+    /// Returns a new scalar obtained by the addition of self and another scalar
+    ///
+    /// - `other` - Other scalar to perform the operation
+    pub fn add(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_add(&mut out, &self.as_fr, &a.as_fr);
+            blst::blst_fr_add(&mut out, &self.as_fr, &other.as_fr);
         }
         Scalar { as_fr: out }
     }
 
-    pub fn sub(&self, a: &Self) -> Self {
+    /// Returns a new scalar obtained by the subtraction of self by another scalar
+    ///
+    /// - `other` - Other scalar to perform the subtraction
+    pub fn sub(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_sub(&mut out, &self.as_fr, &a.as_fr);
+            blst::blst_fr_sub(&mut out, &self.as_fr, &other.as_fr);
         }
         Scalar { as_fr: out }
     }
 
+    /// Returns a new scalar obtained by the negation of self
     pub fn neg(&self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
@@ -134,6 +164,7 @@ impl Scalar {
         Scalar { as_fr: out }
     }
 
+    /// Returns if self is the representation of zero
     pub fn is_zero(&self) -> bool {
         self.as_fr == blst::blst_fr::default()
     }

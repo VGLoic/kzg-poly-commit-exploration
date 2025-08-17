@@ -127,19 +127,19 @@ impl Polynomial {
 
     /// Subtract a polynomial from the current one
     ///
-    /// * `p` - Polynomial to subtract from the current one
-    pub fn sub(&self, p: &Self) -> Result<Self, anyhow::Error> {
+    /// * `other` - Polynomial to subtract from the current one
+    pub fn sub(&self, other: &Self) -> Result<Self, anyhow::Error> {
         let a_length = self.coefficients.len();
-        let b_length = p.coefficients.len();
+        let b_length = other.coefficients.len();
 
         let mut coefficients: Vec<Scalar>;
         if a_length > b_length {
             coefficients = self.coefficients.clone();
-            for (i, rhs) in p.coefficients.iter().enumerate() {
+            for (i, rhs) in other.coefficients.iter().enumerate() {
                 coefficients[i] = coefficients[i].sub(rhs);
             }
         } else {
-            coefficients = p.coefficients.iter().map(|x| x.neg()).collect();
+            coefficients = other.coefficients.iter().map(|x| x.neg()).collect();
             for (i, lhs) in self.coefficients.iter().enumerate() {
                 coefficients[i] = lhs.add(&coefficients[i]);
             }
