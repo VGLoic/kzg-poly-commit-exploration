@@ -30,18 +30,11 @@ mod tests {
     }
 
     fn generate_polynomial(degree: u32) -> Polynomial {
-        let mut coefficients: Vec<i32> = vec![];
+        let mut coefficients: Vec<i128> = vec![];
         for _ in 0..(degree + 1) {
             coefficients.push(Faker.fake());
         }
-        Polynomial::try_from(
-            coefficients
-                .into_iter()
-                .map(i128::from)
-                .collect::<Vec<i128>>()
-                .as_slice(),
-        )
-        .unwrap()
+        Polynomial::try_from(coefficients.as_slice()).unwrap()
     }
 
     fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
@@ -60,8 +53,8 @@ mod tests {
             let polynomial = generate_polynomial(1);
 
             for _ in 0..10 {
-                let input_point: i32 = Faker.fake();
-                run_kate_proof_test(&polynomial, input_point.into(), setup_artifacts);
+                let input_point: i128 = Faker.fake();
+                run_kate_proof_test(&polynomial, input_point, setup_artifacts);
             }
         }
     }
@@ -73,14 +66,16 @@ mod tests {
             let polynomial = generate_polynomial(2);
 
             for _ in 0..10 {
-                let input_point: i32 = Faker.fake();
-                run_kate_proof_test(&polynomial, input_point.into(), setup_artifacts);
+                let input_point: i128 = Faker.fake();
+                run_kate_proof_test(&polynomial, input_point, setup_artifacts);
             }
         }
     }
 
     #[test]
     fn test_kate_proof_over_multiple_degree_with_fixed_input() {
+        let input_point: i128 = Faker.fake();
+
         for _ in 0..10 {
             let degree: u8 = Faker.fake();
             if degree == 0 {
@@ -88,11 +83,9 @@ mod tests {
             }
             let polynomial = generate_polynomial(degree as u32);
 
-            let input_point: u8 = 1;
-
             run_kate_proof_test(
                 &polynomial,
-                input_point.into(),
+                input_point,
                 &generate_setup_artifacts(degree as u32),
             );
         }

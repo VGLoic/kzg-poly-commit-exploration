@@ -15,28 +15,13 @@ impl TryFrom<&[i128]> for Polynomial {
     type Error = anyhow::Error;
 
     fn try_from(value: &[i128]) -> Result<Self, Self::Error> {
-        if value.len() > u32::MAX as usize {
-            return Err(anyhow::anyhow!(
-                "Too many coefficients for polynomial, only 2**32 - 1 coefficients is supported. Got {}",
-                value.len()
-            ));
-        }
-
-        let mut coefficients: Vec<Scalar> = vec![];
-        let mut is_empty = true;
-        for v in value.iter().rev() {
-            if is_empty {
-                if *v == 0 {
-                    continue;
-                } else {
-                    is_empty = false;
-                }
-            }
-            coefficients.push(Scalar::from_i128(*v));
-        }
-        coefficients.reverse();
-
-        Ok(Polynomial { coefficients })
+        Self::try_from(
+            value
+                .iter()
+                .map(|a| Scalar::from_i128(*a))
+                .collect::<Vec<Scalar>>()
+                .as_slice(),
+        )
     }
 }
 
@@ -69,51 +54,13 @@ impl TryFrom<&[Scalar]> for Polynomial {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Evaluation {
-    pub point: Scalar,
-    pub result: Scalar,
-}
-
-impl Evaluation {
-    /// Generates a Kate proof for a given evaluation
-    ///
-    /// * `polynomial` - The polynomial associated with the evaluation
-    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree` artifacts.
-    pub fn generate_proof(
-        &self,
-        polynomial: &Polynomial,
-        setup_artifacts: &[SetupArtifact],
-    ) -> Result<G1Point, anyhow::Error> {
-        polynomial
-            .sub(&Polynomial::from_constant(self.result.clone()))?
-            .divide_by_root(&self.point)?
-            .commit(setup_artifacts)
-    }
-
-    /// Verify the Kate proof given a proof, a commitment and the setup artifacts
-    ///
-    /// * `proof` - Evaluation proof
-    /// * `commitment` - Commitment of the underlying polynomial
-    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least 2 artifacts.
-    pub fn verify_proof(
-        &self,
-        proof: &G1Point,
-        commitment: &G1Point,
-        setup_artifacts: &[SetupArtifact],
-    ) -> Result<bool, anyhow::Error> {
-        let lhs = bilinear_map(
-            proof,
-            &setup_artifacts[1]
-                .g2
-                .sub(&G2Point::from_scalar(self.point.clone())),
-        );
-        let rhs = bilinear_map(
-            &commitment.sub(&G1Point::from_scalar(self.result.clone())),
-            &G2Point::from_i128(1),
-        );
-
-        Ok(lhs == rhs)
+impl From<Scalar> for Polynomial {
+    fn from(value: Scalar) -> Self {
+        let mut coefficients = vec![];
+        if !value.is_zero() {
+            coefficients.push(value);
+        }
+        Polynomial { coefficients }
     }
 }
 
@@ -131,10 +78,8 @@ impl Polynomial {
     /// Creates a polynomial of order 0 from a constant
     ///
     /// * `a` - Constant
-    pub fn from_constant(a: Scalar) -> Polynomial {
-        Polynomial {
-            coefficients: vec![a],
-        }
+    pub fn from_constant(a: Scalar) -> Self {
+        Self::from(a)
     }
 
     /// Evaluate the polynomial at an input point
@@ -157,7 +102,7 @@ impl Polynomial {
     /// Subtract a polynomial from the current one
     ///
     /// * `p` - Polynomial to subtract from the current one
-    pub fn sub(&self, p: &Polynomial) -> Result<Polynomial, anyhow::Error> {
+    pub fn sub(&self, p: &Self) -> Result<Self, anyhow::Error> {
         let a_length = self.coefficients.len();
         let b_length = p.coefficients.len();
 
@@ -179,7 +124,7 @@ impl Polynomial {
     /// Divides the polynomial by the divider polynomial `x - root` and returns the quotient polynomial.
     ///
     /// * `root` - Root of the polynomial
-    pub fn divide_by_root(&self, root: &Scalar) -> Result<Polynomial, anyhow::Error> {
+    pub fn divide_by_root(&self, root: &Scalar) -> Result<Self, anyhow::Error> {
         let higher_order_coefficient = match self.coefficients.last() {
             None => {
                 return Ok(Polynomial {
@@ -274,4 +219,52 @@ fn display_non_zero_coefficient(c: &Scalar, degree: usize) -> String {
         other => format!("x^{other}"),
     };
     format!("{c}{degree_string}")
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Evaluation {
+    pub point: Scalar,
+    pub result: Scalar,
+}
+
+impl Evaluation {
+    /// Generates a Kate proof for a given evaluation
+    ///
+    /// * `polynomial` - The polynomial associated with the evaluation
+    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least `degree` artifacts.
+    pub fn generate_proof(
+        &self,
+        polynomial: &Polynomial,
+        setup_artifacts: &[SetupArtifact],
+    ) -> Result<G1Point, anyhow::Error> {
+        polynomial
+            .sub(&Polynomial::from_constant(self.result.clone()))?
+            .divide_by_root(&self.point)?
+            .commit(setup_artifacts)
+    }
+
+    /// Verify the Kate proof given a proof, a commitment and the setup artifacts
+    ///
+    /// * `proof` - Evaluation proof
+    /// * `commitment` - Commitment of the underlying polynomial
+    /// * `setup_artifacts` - List of setup artifacts for both elliptic curve groups. There must at least 2 artifacts.
+    pub fn verify_proof(
+        &self,
+        proof: &G1Point,
+        commitment: &G1Point,
+        setup_artifacts: &[SetupArtifact],
+    ) -> Result<bool, anyhow::Error> {
+        let lhs = bilinear_map(
+            proof,
+            &setup_artifacts[1]
+                .g2
+                .sub(&G2Point::from_scalar(self.point.clone())),
+        );
+        let rhs = bilinear_map(
+            &commitment.sub(&G1Point::from_scalar(self.result.clone())),
+            &G2Point::from_i128(1),
+        );
+
+        Ok(lhs == rhs)
+    }
 }
