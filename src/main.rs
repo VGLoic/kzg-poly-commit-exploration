@@ -11,6 +11,7 @@ use thiserror::Error;
 use kzg_poly_commit_exploration::{
     curves::G1Point,
     polynomial::{Evaluation, Polynomial},
+    scalar::Scalar,
     trusted_setup,
 };
 
@@ -73,7 +74,7 @@ fn main() {
         panic!("Failed to initialize logging, got error: {err}");
     }
 
-    match &cli.command {
+    match cli.command {
         Some(cmd) => {
             if let Err(e) = cmd.run() {
                 panic!("Command execution failed with error: {e}");
@@ -105,8 +106,8 @@ const EVALUATION_ARTIFACTS_PATH: &str = "./artifacts/evaluation.json";
 const MAX_DEGREE: u32 = 9;
 
 impl Commands {
-    fn run(&self) -> Result<(), CliError> {
-        match &self {
+    fn run(self) -> Result<(), CliError> {
+        match self {
             Commands::TrustedSetup {} => {
                 log::info!("Starting the trusted setup ceremony");
 
@@ -138,7 +139,7 @@ impl Commands {
                 Ok(())
             }
             Commands::Commit { coefficients } => {
-                let polynomial = Polynomial::try_from(coefficients.as_slice())?;
+                let polynomial = Polynomial::try_from(coefficients)?;
 
                 let polynomial_displayed = polynomial.to_string();
 
@@ -215,7 +216,9 @@ impl Commands {
                 let commitment_artifact: CommitmentArtifact =
                     serde_json::from_reader(reader).map_err(anyhow::Error::from)?;
 
-                let evaluation = commitment_artifact.polynomial.evaluate(x)?;
+                let evaluation = commitment_artifact
+                    .polynomial
+                    .evaluate(Scalar::from_i128(x))?;
                 let proof =
                     evaluation.generate_proof(&commitment_artifact.polynomial, &setup_artifacts)?;
 

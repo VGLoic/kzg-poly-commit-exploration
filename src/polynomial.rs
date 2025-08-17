@@ -11,24 +11,48 @@ pub struct Polynomial {
     coefficients: Vec<Scalar>,
 }
 
-impl TryFrom<&[i128]> for Polynomial {
+impl TryFrom<Vec<i128>> for Polynomial {
     type Error = anyhow::Error;
 
-    fn try_from(value: &[i128]) -> Result<Self, Self::Error> {
+    /// Try to create a polynomial from a vector of i128
+    ///
+    /// * `value` - Vec of coefficients, each coefficient represents a degree, degrees are in ascending order
+    ///
+    /// # Examples
+    /// ```rust
+    /// use kzg_poly_commit_exploration::polynomial::Polynomial;
+    ///
+    /// // Polynomial P(x) = 2 + x + 3 * x^2
+    /// let polynomial = Polynomial::try_from(vec![2, 1, 3]);
+    /// ```
+    fn try_from(value: Vec<i128>) -> Result<Self, Self::Error> {
         Self::try_from(
             value
-                .iter()
-                .map(|a| Scalar::from_i128(*a))
-                .collect::<Vec<Scalar>>()
-                .as_slice(),
+                .into_iter()
+                .map(Scalar::from_i128)
+                .collect::<Vec<Scalar>>(),
         )
     }
 }
 
-impl TryFrom<&[Scalar]> for Polynomial {
+impl TryFrom<Vec<Scalar>> for Polynomial {
     type Error = anyhow::Error;
 
-    fn try_from(value: &[Scalar]) -> Result<Self, Self::Error> {
+    /// Try to create a polynomial from a vector of scalar
+    ///
+    /// * `value` - Vec of coefficients, each coefficient represents a degree, degrees are in ascending order
+    ///
+    /// # Examples
+    /// ```rust
+    /// use kzg_poly_commit_exploration::{polynomial::Polynomial, scalar::Scalar};
+    /// // Polynomial P(x) = 2 + x + 3 * x^2
+    /// let coefficients = vec![2, 1, 3]
+    ///     .into_iter()
+    ///     .map(Scalar::from_i128)
+    ///     .collect::<Vec<Scalar>>();
+    /// let polynomial = Polynomial::try_from(coefficients);
+    /// ```
+    fn try_from(value: Vec<Scalar>) -> Result<Self, Self::Error> {
         if value.len() > u32::MAX as usize {
             return Err(anyhow::anyhow!(
                 "Too many coefficients for polynomial, only 2**32 - 1 coefficients is supported. Got {}",
@@ -55,6 +79,9 @@ impl TryFrom<&[Scalar]> for Polynomial {
 }
 
 impl From<Scalar> for Polynomial {
+    /// Creates a polynomial of order 0 from a constant
+    ///
+    /// * `value` - Constant
     fn from(value: Scalar) -> Self {
         let mut coefficients = vec![];
         if !value.is_zero() {
@@ -85,16 +112,15 @@ impl Polynomial {
     /// Evaluate the polynomial at an input point
     ///
     /// * `x` - Input point
-    pub fn evaluate(&self, x: &i128) -> Result<Evaluation, anyhow::Error> {
+    pub fn evaluate(&self, x: Scalar) -> Result<Evaluation, anyhow::Error> {
         let mut evaluation = Scalar::from_i128(0);
-        let x_scalar = Scalar::from_i128(*x);
         for (degree, coefficient) in self.coefficients.iter().enumerate() {
-            let x_powered = x_scalar.pow(degree);
+            let x_powered = x.pow(degree);
             let contribution = coefficient.mul(&x_powered);
             evaluation = evaluation.add(&contribution);
         }
         Ok(Evaluation {
-            point: x_scalar,
+            point: x,
             result: evaluation,
         })
     }
@@ -118,7 +144,7 @@ impl Polynomial {
                 coefficients[i] = lhs.add(&coefficients[i]);
             }
         }
-        Polynomial::try_from(coefficients.as_slice())
+        Polynomial::try_from(coefficients)
     }
 
     /// Divides the polynomial by the divider polynomial `x - root` and returns the quotient polynomial.
@@ -142,31 +168,33 @@ impl Polynomial {
                 return Err(anyhow::anyhow!("Unable to divide a constant polynomial"));
             }
         }
-        // REMIND ME
-        let mut quotient_coefficients_reversed = vec![higher_order_coefficient.clone()];
+        let mut quotient_coefficients_in_descending_degree = vec![higher_order_coefficient.clone()];
         // We skip the higher degree as it is handled at initialisation, and we skip the degree zero as it is checked at the end
-        let mut last_coefficient_found = higher_order_coefficient;
-        for i in (1..self.coefficients.len() - 1).rev() {
+        let degree = self.degree() as usize;
+        for i in (1..degree).rev() {
             let coefficient = &self.coefficients[i];
-            let contribution_from_root = root.mul(&last_coefficient_found);
-            last_coefficient_found = coefficient.add(&contribution_from_root);
+            let last_quotient_coefficient_found =
+                &quotient_coefficients_in_descending_degree[degree - i - 1];
+            let contribution_from_root = root.mul(last_quotient_coefficient_found);
+            let quotient_coefficient = coefficient.add(&contribution_from_root);
 
-            quotient_coefficients_reversed.push(last_coefficient_found.clone());
+            quotient_coefficients_in_descending_degree.push(quotient_coefficient);
         }
 
-        quotient_coefficients_reversed.reverse();
+        quotient_coefficients_in_descending_degree.reverse();
 
         // We check that the constant term is correct: -1 * root * constant term of q = constant term of p
-        let rebuilt_constant_term = root.mul(&quotient_coefficients_reversed[0]).neg();
+        let rebuilt_constant_term = root
+            .mul(&quotient_coefficients_in_descending_degree[0])
+            .neg();
 
-        println!("rebuilt_constant_term: {rebuilt_constant_term}");
         if rebuilt_constant_term != self.coefficients[0] {
             return Err(anyhow::anyhow!(
                 "[divide_by_root] Fail to divide the polynomial by a root, constant terms do not add up"
             ));
         }
 
-        Polynomial::try_from(quotient_coefficients_reversed.as_slice())
+        Polynomial::try_from(quotient_coefficients_in_descending_degree)
     }
 
     /// Generate the G1Point representing the commit to the polynomial using setup artifacts.

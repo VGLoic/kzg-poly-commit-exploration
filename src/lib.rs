@@ -5,19 +5,22 @@ pub mod trusted_setup;
 
 #[cfg(test)]
 mod tests {
-    use crate::trusted_setup::SetupArtifactsGenerator;
-    use crate::{polynomial::Polynomial, trusted_setup::SetupArtifact};
+    use crate::{
+        polynomial::Polynomial,
+        scalar::Scalar,
+        trusted_setup::{SetupArtifact, SetupArtifactsGenerator},
+    };
     use fake::{Fake, Faker};
     use rand::RngCore;
 
     fn run_kate_proof_test(
         polynomial: &Polynomial,
-        input_point: i128,
+        input_point: Scalar,
         setup_artifacts: &[SetupArtifact],
     ) {
         let commitment = polynomial.commit(setup_artifacts).unwrap();
 
-        let evaluation = polynomial.evaluate(&input_point).unwrap();
+        let evaluation = polynomial.evaluate(input_point.clone()).unwrap();
         let proof = evaluation
             .generate_proof(polynomial, setup_artifacts)
             .unwrap();
@@ -34,7 +37,7 @@ mod tests {
         for _ in 0..(degree + 1) {
             coefficients.push(Faker.fake());
         }
-        Polynomial::try_from(coefficients.as_slice()).unwrap()
+        Polynomial::try_from(coefficients).unwrap()
     }
 
     fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
@@ -53,7 +56,7 @@ mod tests {
             let polynomial = generate_polynomial(1);
 
             for _ in 0..10 {
-                let input_point: i128 = Faker.fake();
+                let input_point = Scalar::from_i128(Faker.fake::<i128>());
                 run_kate_proof_test(&polynomial, input_point, setup_artifacts);
             }
         }
@@ -66,7 +69,7 @@ mod tests {
             let polynomial = generate_polynomial(2);
 
             for _ in 0..10 {
-                let input_point: i128 = Faker.fake();
+                let input_point = Scalar::from_i128(Faker.fake::<i128>());
                 run_kate_proof_test(&polynomial, input_point, setup_artifacts);
             }
         }
@@ -74,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_kate_proof_over_multiple_degree_with_fixed_input() {
-        let input_point: i128 = Faker.fake();
+        let input_point = Scalar::from_i128(Faker.fake::<i128>());
 
         for _ in 0..10 {
             let degree: u8 = Faker.fake();
@@ -85,7 +88,7 @@ mod tests {
 
             run_kate_proof_test(
                 &polynomial,
-                input_point,
+                input_point.clone(),
                 &generate_setup_artifacts(degree as u32),
             );
         }
