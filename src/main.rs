@@ -59,10 +59,10 @@ fn main() {
         _ => log::Level::Trace,
     };
 
-    if let Err(err) = dotenvy::dotenv() {
-        if !err.not_found() {
-            panic!("Error while loading .env file: {err}")
-        }
+    if let Err(err) = dotenvy::dotenv()
+        && !err.not_found()
+    {
+        panic!("Error while loading .env file: {err}")
     }
 
     let log_level = match std::env::var("LOG_LEVEL").ok() {
