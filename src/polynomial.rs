@@ -102,10 +102,10 @@ impl Polynomial {
         (self.coefficients.len() - 1) as u32
     }
 
-    /// Creates a polynomial of order 0 from a constant
+    /// Creates a polynomial of order 0 from a scalar
     ///
-    /// * `a` - Constant
-    pub fn from_constant(a: Scalar) -> Self {
+    /// * `a` - Scalar
+    fn from_constant(a: Scalar) -> Self {
         Self::from(a)
     }
 
