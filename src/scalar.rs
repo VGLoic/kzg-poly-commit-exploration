@@ -1,10 +1,9 @@
-use std::fmt::Display;
-
-use num_bigint::BigUint;
 use serde::{
     Deserialize, Serialize,
     de::{self, Visitor},
+    ser::Error,
 };
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scalar(blst::blst_fr);
@@ -221,10 +220,30 @@ impl<'de> Deserialize<'de> for Scalar {
 
 impl Display for Scalar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // REMIND ME
-        let big_uint = BigUint::from_bytes_le(&self.to_le_bytes());
-        write!(f, "{big_uint}")
+        let displayed = display_le_bytes(&self.to_le_bytes())
+            .map_err(|e| std::fmt::Error::custom(e.to_string()))?;
+
+        write!(f, "{displayed}")
     }
+}
+fn display_le_bytes(le_bytes: &[u8]) -> Result<String, anyhow::Error> {
+    let mut digits: Vec<u8> = vec![];
+
+    let mut quotient = le_bytes.to_vec();
+
+    while quotient.iter().any(|&byte| byte != 0) {
+        let mut next_digit: u16 = 0;
+        for byte in quotient.iter_mut().rev() {
+            let to_be_divided = (next_digit << 8) | *byte as u16;
+            *byte = (to_be_divided / 10) as u8;
+            next_digit = to_be_divided % 10;
+        }
+        digits.push((next_digit as u8) + b'0')
+    }
+
+    digits.reverse();
+
+    String::from_utf8(digits).map_err(|e| e.into())
 }
 
 #[cfg(test)]
@@ -273,5 +292,17 @@ mod tests {
         let scalar = Scalar::from_be_bytes(be_bytes);
         let recovered_be_bytes = scalar.to_be_bytes();
         assert_eq!(recovered_be_bytes, be_bytes);
+    }
+
+    #[test]
+    fn test_display_scalar() {
+        let r_be_bytes = hex::decode(R_AS_HEX).unwrap();
+        let mut a: [u8; 32] = Faker.fake();
+        if a[31] >= r_be_bytes[0] {
+            a[31] = r_be_bytes[0] - 1
+        }
+        let from_big_uint = format!("{}", BigUint::from_bytes_le(&a));
+        let from_scalar = format!("{}", Scalar::from_le_bytes(a));
+        assert_eq!(from_big_uint, from_scalar);
     }
 }
