@@ -232,37 +232,41 @@ fn le_bytes_to_base_10_string(le_bytes: &[u8]) -> Result<String, anyhow::Error> 
 
     /*
      * Example with 257 decomposed as [1, 1]:
-     *  * First loop iteration, using [1, 1]:
-     *      ~ First byte:
-     *          - to_be_divided = 0 | 1 = 1
-     *          - byte updated to 1 / 10 = 0
-     *          - next_digit = 1 % 10 = 1
-     *      ~ Second byte:
-     *          - to_be_divided = (1 << 8) | 1 = 257
-     *          - byte updated to 257 / 10 = 25
-     *          - next_digit = 257 % 10 = 7
-     *      => found digit is 7
-     *  * Second loop iteration, using [25, 0]:
-     *      ~ First byte:
-     *          - to_be_divided = 0 | 0 = 0
-     *          - byte updated to 0 / 10 = 0
-     *          - next_digit = 0 % 10 = 0
-     *      ~ Second byte:
-     *           - to_be_divided = 0 | 25 = 25
-     *           - byte updated to 25 / 10 = 2
-     *           - next_digit = 25 % 10 = 5
-     *      => found digit is 5
-     *  * Third loop iteration, using [2, 0]:
-     *      ~ First byte:
-     *          - to_be_divided = 0 | 0 = 0
-     *          - byte updated to 0 / 10 = 0
-     *          - next_digit = 0 % 10 = 0
-     *      ~ Second byte:
-     *           - to_be_divided = 0 | 2 = 2
-     *           - byte updated to 2 / 10 = 0
-     *           - next_digit = 2 % 10 = 2
-     *      => found digit is 2
-     *  => After reversion, digits are [2, 5, 7]
+     *
+     * First loop iteration, using [1, 1]:
+     *   - First byte:
+     *       to_be_divided = 0 | 1 = 1
+     *       byte updated to 1 / 10 = 0
+     *       next_digit = 1 % 10 = 1
+     *   - Second byte:
+     *       to_be_divided = (1 << 8) | 1 = 257
+     *       byte updated to 257 / 10 = 25
+     *       next_digit = 257 % 10 = 7
+     *   => found digit is 7
+     *
+     * Second loop iteration, using [25, 0]:
+     *   - First byte:
+     *       to_be_divided = 0 | 0 = 0
+     *       byte updated to 0 / 10 = 0
+     *       next_digit = 0 % 10 = 0
+     *   - Second byte:
+     *       to_be_divided = 0 | 25 = 25
+     *       byte updated to 25 / 10 = 2
+     *       next_digit = 25 % 10 = 5
+     *   => found digit is 5
+     *
+     * Third loop iteration, using [2, 0]:
+     *   - First byte:
+     *       to_be_divided = 0 | 0 = 0
+     *       byte updated to 0 / 10 = 0
+     *       next_digit = 0 % 10 = 0
+     *   - Second byte:
+     *       to_be_divided = 0 | 2 = 2
+     *       byte updated to 2 / 10 = 0
+     *       next_digit = 2 % 10 = 2
+     *   => found digit is 2
+     *
+     * After reversion, digits are [2, 5, 7]
      */
     while quotient.iter().any(|&byte| byte != 0) {
         let mut next_digit: u16 = 0;
