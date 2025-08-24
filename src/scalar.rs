@@ -221,7 +221,7 @@ impl Display for Scalar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match le_bytes_to_base_10_string(&self.to_le_bytes()) {
             Err(e) => write!(f, "Error while displaying {self:?}. Error is {e}"),
-            Ok(s) => write!(f, "{s}")
+            Ok(s) => write!(f, "{s}"),
         }
     }
 }
