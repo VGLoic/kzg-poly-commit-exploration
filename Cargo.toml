@@ -19,5 +19,5 @@ thiserror = "2.0.12"
 
 [dev-dependencies]
 fake = "4.3.0"
-num-bigint = "0.4.6"
 hex = "0.4.3"
+num-bigint = "0.4.6"

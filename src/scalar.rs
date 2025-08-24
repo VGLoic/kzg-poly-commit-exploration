@@ -1,7 +1,11 @@
-#[derive(Debug)]
-pub struct Scalar {
-    as_fr: blst::blst_fr,
-}
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Visitor},
+};
+use std::fmt::Display;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scalar(blst::blst_fr);
 
 const R_AS_HEX: &str = "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
 
@@ -20,35 +24,17 @@ fn be_bytes_to_hex(a: &[u8]) -> String {
     out
 }
 
-impl Scalar {
-    pub fn from_le_bytes(b: [u8; 32]) -> Self {
-        let hexa = le_bytes_to_hex(&b);
-        let mut fr = blst::blst_fr::default();
-        unsafe {
-            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
-        }
-        Self { as_fr: fr }
-    }
-
-    pub fn from_be_bytes(b: [u8; 32]) -> Self {
-        let mut fr = blst::blst_fr::default();
-        let hexa = be_bytes_to_hex(&b);
-        unsafe {
-            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
-        }
-        Self { as_fr: fr }
-    }
-
-    pub fn from_i128(a: i128) -> Self {
+impl From<i128> for Scalar {
+    fn from(value: i128) -> Self {
         let mut unsigned_le_bytes = [0u8; 32];
-        unsigned_le_bytes[..16].copy_from_slice(&a.unsigned_abs().to_le_bytes());
+        unsigned_le_bytes[..16].copy_from_slice(&value.unsigned_abs().to_le_bytes());
         let unsigned_hexa = le_bytes_to_hex(&unsigned_le_bytes);
         let mut fr = blst::blst_fr::default();
         unsafe {
             blst::blst_fr_from_hexascii(&mut fr, unsigned_hexa.as_ptr());
         }
-        if a > 0 {
-            return Self { as_fr: fr };
+        if value > 0 {
+            return Self(fr);
         }
 
         let mut r = blst::blst_fr::default();
@@ -57,13 +43,47 @@ impl Scalar {
             blst::blst_fr_sub(&mut fr, &r, &fr);
         };
 
-        Self { as_fr: fr }
+        Self(fr)
+    }
+}
+
+impl Scalar {
+    /// Creates a scalar from low endian bytes
+    ///
+    /// * `b` - Low endian byte array of length 32
+    pub fn from_le_bytes(b: [u8; 32]) -> Self {
+        let hexa = le_bytes_to_hex(&b);
+        let mut fr = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
+        }
+        Self(fr)
     }
 
+    /// Creates a scalar from big endian bytes
+    ///
+    /// * `b` - Big endian byte array of length 32
+    pub fn from_be_bytes(b: [u8; 32]) -> Self {
+        let mut fr = blst::blst_fr::default();
+        let hexa = be_bytes_to_hex(&b);
+        unsafe {
+            blst::blst_fr_from_hexascii(&mut fr, hexa.as_ptr());
+        }
+        Self(fr)
+    }
+
+    /// Creates a scalar from a i128
+    ///
+    /// * `a` - i128 value
+    pub fn from_i128(a: i128) -> Self {
+        Self::from(a)
+    }
+
+    /// Returns the low endian bytes representation of the scalar
     pub fn to_le_bytes(&self) -> [u8; 32] {
         let mut scalar = blst::blst_scalar::default();
         unsafe {
-            blst::blst_scalar_from_fr(&mut scalar, &self.as_fr);
+            blst::blst_scalar_from_fr(&mut scalar, &self.0);
         }
         let mut le_bytes = [0u8; 32];
         unsafe {
@@ -72,10 +92,11 @@ impl Scalar {
         le_bytes
     }
 
+    /// Returns the big endian bytes representation of the scalar
     pub fn to_be_bytes(&self) -> [u8; 32] {
         let mut scalar = blst::blst_scalar::default();
         unsafe {
-            blst::blst_scalar_from_fr(&mut scalar, &self.as_fr);
+            blst::blst_scalar_from_fr(&mut scalar, &self.0);
         }
         let mut be_bytes = [0u8; 32];
         unsafe {
@@ -84,13 +105,182 @@ impl Scalar {
         be_bytes
     }
 
-    pub fn mul(&self, a: &Self) -> Self {
+    /// Returns a new scalar obtained by the multiplication of self and another scalar
+    ///
+    /// - `other` - Other scalar to perform the operation
+    pub fn mul(&self, other: &Self) -> Self {
         let mut out = blst::blst_fr::default();
         unsafe {
-            blst::blst_fr_mul(&mut out, &self.as_fr, &a.as_fr);
+            blst::blst_fr_mul(&mut out, &self.0, &other.0);
         };
-        Self { as_fr: out }
+        Self(out)
     }
+
+    /// Returns a new scalar obtained by the multiplication of self by itself a given number of times
+    ///
+    /// - `n` - Number of times to multiply self by itself
+    pub fn pow(&self, n: usize) -> Self {
+        let mut out = Scalar::from_i128(1).0;
+        for _ in 0..n {
+            unsafe {
+                blst::blst_fr_mul(&mut out, &out, &self.0);
+            }
+        }
+        Scalar(out)
+    }
+
+    /// Returns a new scalar obtained by the addition of self and another scalar
+    ///
+    /// - `other` - Other scalar to perform the operation
+    pub fn add(&self, other: &Self) -> Self {
+        let mut out = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_add(&mut out, &self.0, &other.0);
+        }
+        Scalar(out)
+    }
+
+    /// Returns a new scalar obtained by the subtraction of self by another scalar
+    ///
+    /// - `other` - Other scalar to perform the subtraction
+    pub fn sub(&self, other: &Self) -> Self {
+        let mut out = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_sub(&mut out, &self.0, &other.0);
+        }
+        Scalar(out)
+    }
+
+    /// Returns a new scalar obtained by the negation of self
+    pub fn neg(&self) -> Self {
+        let mut out = blst::blst_fr::default();
+        unsafe {
+            blst::blst_fr_cneg(&mut out, &self.0, true);
+        }
+        Scalar(out)
+    }
+
+    /// Returns true if self is the representation of zero, false otherwise
+    pub fn is_zero(&self) -> bool {
+        self.0 == blst::blst_fr::default()
+    }
+}
+
+impl Serialize for Scalar {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(&self.to_le_bytes())
+    }
+}
+
+impl<'de> Deserialize<'de> for Scalar {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ScalarVisitor;
+
+        impl<'de> Visitor<'de> for ScalarVisitor {
+            type Value = Scalar;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Sequence of u8")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut elements: Vec<u8> = vec![];
+
+                while let Some(a) = seq.next_element()? {
+                    elements.push(a)
+                }
+
+                if elements.len() != 32 {
+                    return Err(de::Error::custom(format!(
+                        "Invalid byte array, expected length 32, got {}",
+                        elements.len()
+                    )));
+                }
+
+                let mut le_bytes = [0u8; 32];
+                le_bytes.copy_from_slice(&elements[0..32]);
+
+                Ok(Scalar::from_le_bytes(le_bytes))
+            }
+        }
+
+        deserializer.deserialize_seq(ScalarVisitor)
+    }
+}
+
+impl Display for Scalar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match le_bytes_to_base_10_string(&self.to_le_bytes()) {
+            Err(e) => write!(f, "Error while displaying {self:?}. Error is {e}"),
+            Ok(s) => write!(f, "{s}"),
+        }
+    }
+}
+fn le_bytes_to_base_10_string(le_bytes: &[u8]) -> Result<String, anyhow::Error> {
+    let mut digits: Vec<u8> = vec![];
+
+    let mut quotient = le_bytes.to_vec();
+
+    /*
+     * Example with 257 decomposed as [1, 1]:
+     *
+     * First loop iteration, using [1, 1]:
+     *   - First byte:
+     *       to_be_divided = 0 | 1 = 1
+     *       byte updated to 1 / 10 = 0
+     *       next_digit = 1 % 10 = 1
+     *   - Second byte:
+     *       to_be_divided = (1 << 8) | 1 = 257
+     *       byte updated to 257 / 10 = 25
+     *       next_digit = 257 % 10 = 7
+     *   => found digit is 7
+     *
+     * Second loop iteration, using [25, 0]:
+     *   - First byte:
+     *       to_be_divided = 0 | 0 = 0
+     *       byte updated to 0 / 10 = 0
+     *       next_digit = 0 % 10 = 0
+     *   - Second byte:
+     *       to_be_divided = 0 | 25 = 25
+     *       byte updated to 25 / 10 = 2
+     *       next_digit = 25 % 10 = 5
+     *   => found digit is 5
+     *
+     * Third loop iteration, using [2, 0]:
+     *   - First byte:
+     *       to_be_divided = 0 | 0 = 0
+     *       byte updated to 0 / 10 = 0
+     *       next_digit = 0 % 10 = 0
+     *   - Second byte:
+     *       to_be_divided = 0 | 2 = 2
+     *       byte updated to 2 / 10 = 0
+     *       next_digit = 2 % 10 = 2
+     *   => found digit is 2
+     *
+     * After reversion, digits are [2, 5, 7]
+     */
+    while quotient.iter().any(|&byte| byte != 0) {
+        let mut next_digit: u16 = 0;
+        for byte in quotient.iter_mut().rev() {
+            let to_be_divided = (next_digit << 8) | *byte as u16;
+            *byte = (to_be_divided / 10) as u8;
+            next_digit = to_be_divided % 10;
+        }
+        digits.push((next_digit as u8) + b'0')
+    }
+
+    digits.reverse();
+
+    String::from_utf8(digits).map_err(|e| e.into())
 }
 
 #[cfg(test)]
@@ -139,5 +329,17 @@ mod tests {
         let scalar = Scalar::from_be_bytes(be_bytes);
         let recovered_be_bytes = scalar.to_be_bytes();
         assert_eq!(recovered_be_bytes, be_bytes);
+    }
+
+    #[test]
+    fn test_display_scalar() {
+        let r_be_bytes = hex::decode(R_AS_HEX).unwrap();
+        let mut a: [u8; 32] = Faker.fake();
+        if a[31] >= r_be_bytes[0] {
+            a[31] = r_be_bytes[0] - 1
+        }
+        let from_big_uint = format!("{}", BigUint::from_bytes_le(&a));
+        let from_scalar = format!("{}", Scalar::from_le_bytes(a));
+        assert_eq!(from_big_uint, from_scalar);
     }
 }

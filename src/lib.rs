@@ -5,19 +5,22 @@ pub mod trusted_setup;
 
 #[cfg(test)]
 mod tests {
-    use crate::trusted_setup::SetupArtifactsGenerator;
-    use crate::{polynomial::Polynomial, trusted_setup::SetupArtifact};
+    use crate::{
+        polynomial::Polynomial,
+        scalar::Scalar,
+        trusted_setup::{SetupArtifact, SetupArtifactsGenerator},
+    };
     use fake::{Fake, Faker};
     use rand::RngCore;
 
     fn run_kate_proof_test(
         polynomial: &Polynomial,
-        input_point: i128,
+        input_point: Scalar,
         setup_artifacts: &[SetupArtifact],
     ) {
         let commitment = polynomial.commit(setup_artifacts).unwrap();
 
-        let evaluation = polynomial.evaluate(&input_point).unwrap();
+        let evaluation = polynomial.evaluate(input_point.clone()).unwrap();
         let proof = evaluation
             .generate_proof(polynomial, setup_artifacts)
             .unwrap();
@@ -30,18 +33,11 @@ mod tests {
     }
 
     fn generate_polynomial(degree: u32) -> Polynomial {
-        let mut coefficients: Vec<i32> = vec![];
+        let mut coefficients: Vec<i128> = vec![];
         for _ in 0..(degree + 1) {
             coefficients.push(Faker.fake());
         }
-        Polynomial::try_from(
-            coefficients
-                .into_iter()
-                .map(i128::from)
-                .collect::<Vec<i128>>()
-                .as_slice(),
-        )
-        .unwrap()
+        Polynomial::try_from(coefficients).unwrap()
     }
 
     fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
@@ -52,7 +48,6 @@ mod tests {
             .collect()
     }
 
-    // TODO: Testing indicates some limitations on the possible values for the coefficients and the input points. There is a need to fix this and increase the coverage of these tests.
     #[test]
     fn test_kate_proof_for_polynomial_degree_one_over_multiple_input() {
         let setup_artifacts = &generate_setup_artifacts(1);
@@ -60,8 +55,8 @@ mod tests {
             let polynomial = generate_polynomial(1);
 
             for _ in 0..10 {
-                let input_point: i32 = Faker.fake();
-                run_kate_proof_test(&polynomial, input_point.into(), setup_artifacts);
+                let input_point = Scalar::from_i128(Faker.fake::<i128>());
+                run_kate_proof_test(&polynomial, input_point, setup_artifacts);
             }
         }
     }
@@ -73,26 +68,27 @@ mod tests {
             let polynomial = generate_polynomial(2);
 
             for _ in 0..10 {
-                let input_point: i32 = Faker.fake();
-                run_kate_proof_test(&polynomial, input_point.into(), setup_artifacts);
+                let input_point = Scalar::from_i128(Faker.fake::<i128>());
+                run_kate_proof_test(&polynomial, input_point, setup_artifacts);
             }
         }
     }
 
     #[test]
     fn test_kate_proof_over_multiple_degree_with_fixed_input() {
+        let input_point = Scalar::from_i128(Faker.fake::<i128>());
+
         for _ in 0..10 {
+            // TODO: Testing indicates some limitations on the possible values for the degree. There is a need to fix this and increase the coverage of these tests.
             let degree: u8 = Faker.fake();
             if degree == 0 {
                 continue;
             }
             let polynomial = generate_polynomial(degree as u32);
 
-            let input_point: u8 = 1;
-
             run_kate_proof_test(
                 &polynomial,
-                input_point.into(),
+                input_point.clone(),
                 &generate_setup_artifacts(degree as u32),
             );
         }

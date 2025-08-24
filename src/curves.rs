@@ -5,15 +5,10 @@ use serde::{
     de::{self, Visitor},
 };
 
+use crate::scalar::Scalar;
+
 #[derive(Debug)]
 pub struct G1Point(blst::blst_p1);
-
-impl Deref for G1Point {
-    type Target = blst::blst_p1;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl From<blst::blst_p1> for G1Point {
     fn from(value: blst::blst_p1) -> Self {
@@ -49,6 +44,22 @@ impl G1Point {
         out.into()
     }
 
+    /// Project a scalar to the G1 curve using the generator
+    ///
+    /// * `a` - Scalar to project
+    pub fn from_scalar(a: Scalar) -> Self {
+        let mut out = blst::blst_p1::default();
+        unsafe {
+            blst::blst_p1_mult(
+                &mut out,
+                blst::blst_p1_generator(),
+                a.to_le_bytes().as_ptr(),
+                256,
+            );
+        };
+        out.into()
+    }
+
     /// Subtract two points and give the result as a new point
     ///
     /// * `b` - G1 point to subtract from self
@@ -75,23 +86,12 @@ impl G1Point {
 
     /// Multiply a point by a scalar and give the result as a new point
     ///
-    /// * `a` - Integer that will multiply self
-    pub fn mult(&self, a: i128) -> Self {
-        let scalar = blst_scalar_from_i128_as_abs(a);
+    /// * `a` - Scalar that will multiply self
+    pub fn mult(&self, a: &Scalar) -> Self {
         let mut out = blst::blst_p1::default();
         unsafe {
-            blst::blst_p1_mult(
-                &mut out,
-                self.as_raw_ptr(),
-                scalar.b.as_ptr(),
-                scalar.b.len() * 8,
-            );
+            blst::blst_p1_mult(&mut out, self.as_raw_ptr(), a.to_le_bytes().as_ptr(), 256);
         };
-        if a < 0 {
-            unsafe {
-                blst::blst_p1_cneg(&mut out, true);
-            }
-        }
         out.into()
     }
 }
@@ -216,6 +216,22 @@ impl G2Point {
                 blst::blst_p2_cneg(&mut out, true);
             }
         }
+        out.into()
+    }
+
+    /// Project a scalar to the G2 curve using the generator
+    ///
+    /// * `a` - Scalar to project
+    pub fn from_scalar(a: Scalar) -> Self {
+        let mut out = blst::blst_p2::default();
+        unsafe {
+            blst::blst_p2_mult(
+                &mut out,
+                blst::blst_p2_generator(),
+                a.to_le_bytes().as_ptr(),
+                256,
+            );
+        };
         out.into()
     }
 
