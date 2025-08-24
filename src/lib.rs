@@ -48,7 +48,6 @@ mod tests {
             .collect()
     }
 
-    // TODO: Testing indicates some limitations on the possible values for the coefficients and the input points. There is a need to fix this and increase the coverage of these tests.
     #[test]
     fn test_kate_proof_for_polynomial_degree_one_over_multiple_input() {
         let setup_artifacts = &generate_setup_artifacts(1);
@@ -80,6 +79,7 @@ mod tests {
         let input_point = Scalar::from_i128(Faker.fake::<i128>());
 
         for _ in 0..10 {
+            // TODO: Testing indicates some limitations on the possible values for the degree. There is a need to fix this and increase the coverage of these tests.
             let degree: u8 = Faker.fake();
             if degree == 0 {
                 continue;
