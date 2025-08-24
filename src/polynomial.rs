@@ -60,19 +60,16 @@ impl TryFrom<Vec<Scalar>> for Polynomial {
             ));
         }
 
+        let mut last_non_zero_index = 0;
         let mut coefficients: Vec<Scalar> = vec![];
-        let mut is_empty = true;
-        for v in value.iter().rev() {
-            if is_empty {
-                if v.is_zero() {
-                    continue;
-                } else {
-                    is_empty = false;
-                }
+        for (i, v) in value.into_iter().enumerate() {
+            if !v.is_zero() {
+                last_non_zero_index = i;
             }
-            coefficients.push(v.clone());
+            coefficients.push(v);
         }
-        coefficients.reverse();
+
+        coefficients.truncate(last_non_zero_index + 1);
 
         Ok(Polynomial { coefficients })
     }
@@ -294,5 +291,32 @@ impl Evaluation {
         );
 
         Ok(lhs == rhs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_polynomial_with_tailing_zeros() {
+        assert_eq!(
+            Polynomial::try_from(vec![0, 0, 0, 0, 0]).unwrap().degree(),
+            0
+        );
+        assert_eq!(
+            Polynomial::try_from(vec![1, 0, 0, 0, 0]).unwrap().degree(),
+            0
+        );
+        assert_eq!(
+            Polynomial::try_from(vec![1, 0, 1, 0, 0]).unwrap().degree(),
+            2
+        );
+        assert_eq!(
+            Polynomial::try_from(vec![1, 0, 1, 0, 0, 5])
+                .unwrap()
+                .degree(),
+            5
+        );
     }
 }
