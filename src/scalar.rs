@@ -1,7 +1,6 @@
 use serde::{
     Deserialize, Serialize,
     de::{self, Visitor},
-    ser::Error,
 };
 use std::fmt::Display;
 
@@ -220,10 +219,10 @@ impl<'de> Deserialize<'de> for Scalar {
 
 impl Display for Scalar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let displayed = le_bytes_to_base_10_string(&self.to_le_bytes())
-            .map_err(|e| std::fmt::Error::custom(e.to_string()))?;
-
-        write!(f, "{displayed}")
+        match le_bytes_to_base_10_string(&self.to_le_bytes()) {
+            Err(e) => write!(f, "Error while displaying {self:?}. Error is {e}"),
+            Ok(s) => write!(f, "{s}")
+        }
     }
 }
 fn le_bytes_to_base_10_string(le_bytes: &[u8]) -> Result<String, anyhow::Error> {
