@@ -51,22 +51,22 @@ fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
             },
         );
 
-        // Benchmark proof generation (evaluation + proof generation combined)
+        // Benchmark proof generation
         group.bench_with_input(
-            BenchmarkId::new("evaluate_and_prove", degree),
+            BenchmarkId::new("proof_generation", degree),
             degree,
             |b, &degree| {
                 b.iter_batched(
                     || {
-                        // Setup: Generate polynomial, setup artifacts, and evaluation point for each iteration
+                        // Setup: Generate polynomial, setup artifacts, evaluation point, and evaluation for each iteration
                         let polynomial = generate_polynomial(degree);
                         let setup_artifacts = generate_setup_artifacts(degree);
                         let input_point = Scalar::from_i128(Faker.fake::<i128>());
-                        (polynomial, setup_artifacts, input_point)
-                    },
-                    |(polynomial, setup_artifacts, input_point)| {
-                        // Benchmark: Evaluate polynomial and generate proof
                         let evaluation = polynomial.evaluate(input_point).unwrap();
+                        (polynomial, setup_artifacts, evaluation)
+                    },
+                    |(polynomial, setup_artifacts, evaluation)| {
+                        // Benchmark: Generate proof only
                         let _proof = evaluation
                             .generate_proof(&polynomial, &setup_artifacts)
                             .unwrap();
