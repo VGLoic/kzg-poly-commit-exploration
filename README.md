@@ -383,6 +383,8 @@ The tests are now run using random values. From this, I discovered a lot of over
 
 I originally thought that the secret, the power of the secret and the polynomial coefficients should be in the prime field `F_q`. I understood that I was wrong and that these quantities are actually living in `F_r` the prime field built associated to the subgroups we want to target. Instead of the 48 bytes I was previously using, I am left with 32, and all the operations are made in the `F_r` group. I still need to find a proper explanation somewhere in the documentation for this.
 
+The correct explanations can be found when looking at the [subgroups](https://eth2book.info/capella/part2/building_blocks/bls12-381/#the-subgroups) paragraph. I initally went too fast on this part. The G1 and G2 are defined from the `E(F_q)` and `E(F_q^12)` but are subgroups of it, so one cannot choose any points on the curve or any scalar, they must belong to the correct subgroups.
+
 ## Repository setup
 
 Environment variables can be set up using `.env` file at the root of the repository, see `.env.example` for a list of the supported environment variables.
