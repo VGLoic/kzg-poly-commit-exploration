@@ -1,10 +1,10 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use fake::{Fake, Faker};
 use kzg_poly_commit_exploration::{
     polynomial::Polynomial,
     scalar::Scalar,
     trusted_setup::{SetupArtifact, SetupArtifactsGenerator},
 };
-use fake::{Fake, Faker};
 use rand::RngCore;
 
 fn generate_polynomial(degree: u32) -> Polynomial {
@@ -25,10 +25,10 @@ fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
 
 fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial_evaluation_and_proof");
-    
+
     // Test with different polynomial degrees
     let degrees = [1, 5, 10, 25, 50];
-    
+
     for degree in degrees.iter() {
         // Benchmark polynomial evaluation
         group.bench_with_input(
@@ -46,11 +46,11 @@ fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
                         // Benchmark: Evaluate polynomial
                         let _evaluation = polynomial.evaluate(input_point).unwrap();
                     },
-                    criterion::BatchSize::SmallInput
+                    criterion::BatchSize::SmallInput,
                 );
             },
         );
-        
+
         // Benchmark proof generation (evaluation + proof generation combined)
         group.bench_with_input(
             BenchmarkId::new("evaluate_and_prove", degree),
@@ -67,14 +67,16 @@ fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
                     |(polynomial, setup_artifacts, input_point)| {
                         // Benchmark: Evaluate polynomial and generate proof
                         let evaluation = polynomial.evaluate(input_point).unwrap();
-                        let _proof = evaluation.generate_proof(&polynomial, &setup_artifacts).unwrap();
+                        let _proof = evaluation
+                            .generate_proof(&polynomial, &setup_artifacts)
+                            .unwrap();
                     },
-                    criterion::BatchSize::SmallInput
+                    criterion::BatchSize::SmallInput,
                 );
             },
         );
     }
-    
+
     group.finish();
 }
 

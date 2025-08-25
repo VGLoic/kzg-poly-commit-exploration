@@ -1,13 +1,13 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use kzg_poly_commit_exploration::trusted_setup::SetupArtifactsGenerator;
 use rand::RngCore;
 
 fn bench_trusted_setup_generation(c: &mut Criterion) {
     let mut group = c.benchmark_group("trusted_setup_generation");
-    
+
     // Test with different polynomial degrees as specified
     let degrees = [2, 20, 2_000];
-    
+
     for degree in degrees.iter() {
         group.bench_with_input(
             BenchmarkId::new("setup_generation", degree),
@@ -26,12 +26,12 @@ fn bench_trusted_setup_generation(c: &mut Criterion) {
                             .take((degree + 1) as usize)
                             .collect();
                     },
-                    criterion::BatchSize::SmallInput
+                    criterion::BatchSize::SmallInput,
                 );
             },
         );
     }
-    
+
     group.finish();
 }
 

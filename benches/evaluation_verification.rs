@@ -1,10 +1,10 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use fake::{Fake, Faker};
 use kzg_poly_commit_exploration::{
     polynomial::Polynomial,
     scalar::Scalar,
     trusted_setup::{SetupArtifact, SetupArtifactsGenerator},
 };
-use fake::{Fake, Faker};
 use rand::RngCore;
 
 fn generate_polynomial(degree: u32) -> Polynomial {
@@ -25,10 +25,10 @@ fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
 
 fn bench_evaluation_verification(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluation_verification");
-    
+
     // Test with different polynomial degrees
     let degrees = [1, 5, 10, 25, 50];
-    
+
     for degree in degrees.iter() {
         group.bench_with_input(
             BenchmarkId::new("verify_proof", degree),
@@ -40,24 +40,28 @@ fn bench_evaluation_verification(c: &mut Criterion) {
                         let polynomial = generate_polynomial(degree);
                         let setup_artifacts = generate_setup_artifacts(degree);
                         let input_point = Scalar::from_i128(Faker.fake::<i128>());
-                        
+
                         // Generate commitment, evaluation, and proof
                         let commitment = polynomial.commit(&setup_artifacts).unwrap();
                         let evaluation = polynomial.evaluate(input_point).unwrap();
-                        let proof = evaluation.generate_proof(&polynomial, &setup_artifacts).unwrap();
-                        
+                        let proof = evaluation
+                            .generate_proof(&polynomial, &setup_artifacts)
+                            .unwrap();
+
                         (evaluation, proof, commitment, setup_artifacts)
                     },
                     |(evaluation, proof, commitment, setup_artifacts)| {
                         // Benchmark: Verify proof
-                        let _is_valid = evaluation.verify_proof(&proof, &commitment, &setup_artifacts).unwrap();
+                        let _is_valid = evaluation
+                            .verify_proof(&proof, &commitment, &setup_artifacts)
+                            .unwrap();
                     },
-                    criterion::BatchSize::SmallInput
+                    criterion::BatchSize::SmallInput,
                 );
             },
         );
     }
-    
+
     group.finish();
 }
 

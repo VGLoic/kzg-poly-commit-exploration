@@ -1,9 +1,9 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use fake::{Fake, Faker};
 use kzg_poly_commit_exploration::{
     polynomial::Polynomial,
     trusted_setup::{SetupArtifact, SetupArtifactsGenerator},
 };
-use fake::{Fake, Faker};
 use rand::RngCore;
 
 fn generate_polynomial(degree: u32) -> Polynomial {
@@ -24,32 +24,28 @@ fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
 
 fn bench_polynomial_commitment(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial_commitment");
-    
+
     // Test with different polynomial degrees as specified
     let degrees = [1, 10, 25, 50, 100];
-    
+
     for degree in degrees.iter() {
-        group.bench_with_input(
-            BenchmarkId::new("commit", degree),
-            degree,
-            |b, &degree| {
-                b.iter_batched(
-                    || {
-                        // Setup: Generate polynomial and setup artifacts for each iteration
-                        let polynomial = generate_polynomial(degree);
-                        let setup_artifacts = generate_setup_artifacts(degree);
-                        (polynomial, setup_artifacts)
-                    },
-                    |(polynomial, setup_artifacts)| {
-                        // Benchmark: Commit to polynomial
-                        let _commitment = polynomial.commit(&setup_artifacts).unwrap();
-                    },
-                    criterion::BatchSize::SmallInput
-                );
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("commit", degree), degree, |b, &degree| {
+            b.iter_batched(
+                || {
+                    // Setup: Generate polynomial and setup artifacts for each iteration
+                    let polynomial = generate_polynomial(degree);
+                    let setup_artifacts = generate_setup_artifacts(degree);
+                    (polynomial, setup_artifacts)
+                },
+                |(polynomial, setup_artifacts)| {
+                    // Benchmark: Commit to polynomial
+                    let _commitment = polynomial.commit(&setup_artifacts).unwrap();
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
     }
-    
+
     group.finish();
 }
 
