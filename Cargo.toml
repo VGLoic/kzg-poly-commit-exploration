@@ -21,3 +21,20 @@ thiserror = "2.0.12"
 fake = "4.3.0"
 hex = "0.4.3"
 num-bigint = "0.4.6"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "trusted_setup"
+harness = false
+
+[[bench]]
+name = "polynomial_commitment"
+harness = false
+
+[[bench]]
+name = "polynomial_evaluation"
+harness = false
+
+[[bench]]
+name = "evaluation_verification"
+harness = false
