@@ -6,7 +6,7 @@ fn bench_trusted_setup_generation(c: &mut Criterion) {
     let mut group = c.benchmark_group("trusted_setup_generation");
 
     // Test with different polynomial degrees as specified
-    let degrees = [2, 500, 5_000];
+    let degrees = [1, 100, 500, 1_000, 2_500];
 
     for degree in degrees.iter() {
         group.bench_with_input(
