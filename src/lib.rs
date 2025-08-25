@@ -79,8 +79,7 @@ mod tests {
         let input_point = Scalar::from_i128(Faker.fake::<i128>());
 
         for _ in 0..10 {
-            // TODO: Testing indicates some limitations on the possible values for the degree. There is a need to fix this and increase the coverage of these tests.
-            let degree: u8 = Faker.fake();
+            let degree: u16 = (0..2_000).fake();
             if degree == 0 {
                 continue;
             }
