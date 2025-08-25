@@ -389,6 +389,32 @@ Environment variables can be set up using `.env` file at the root of the reposit
 
 A single executable as a CLI is present, use `cargo run -- --help` to show the available commands.
 
+### Running Benchmarks
+
+This repository includes comprehensive benchmarks for all key KZG polynomial commitment operations using Criterion.rs. The benchmarks measure performance across different polynomial degrees and provide statistical analysis.
+
+To run all benchmarks:
+```bash
+cargo bench
+```
+
+To run specific benchmark suites:
+```bash
+# Trusted setup generation (degrees: 2, 20, 2000)
+cargo bench --bench trusted_setup
+
+# Polynomial commitment (degrees: 1, 10, 25, 50, 100)
+cargo bench --bench polynomial_commitment
+
+# Polynomial evaluation and proof generation (degrees: 1, 5, 10, 25, 50)
+cargo bench --bench polynomial_evaluation
+
+# Evaluation verification (degrees: 1, 5, 10, 25, 50)
+cargo bench --bench evaluation_verification
+```
+
+Benchmark results are saved in the `target/criterion/` directory and include HTML reports with performance graphs and statistical analysis.
+
 ## Resources
 
 - [Applied ZK learning group of 0xParc](https://learn.0xparc.org/materials/circom/learning-group-1/intro-zkp/): a set of videos going through Circom and a bit of applied cryptography,
