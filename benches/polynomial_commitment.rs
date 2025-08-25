@@ -26,7 +26,7 @@ fn bench_polynomial_commitment(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial_commitment");
 
     // Test with different polynomial degrees as specified
-    let degrees = [1, 10, 25, 50, 100];
+    let degrees = [1, 100, 500, 1_000, 2_500];
 
     for degree in degrees.iter() {
         group.bench_with_input(BenchmarkId::new("commit", degree), degree, |b, &degree| {

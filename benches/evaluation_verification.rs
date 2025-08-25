@@ -27,7 +27,7 @@ fn bench_evaluation_verification(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluation_verification");
 
     // Test with different polynomial degrees
-    let degrees = [1, 5, 10, 25, 50];
+    let degrees = [1, 100, 500, 1_000, 2_500];
 
     for degree in degrees.iter() {
         group.bench_with_input(
