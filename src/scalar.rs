@@ -155,23 +155,20 @@ impl Scalar {
         //  Target factor = 28
         //  Power of two decomposition: [self^2, self^4, self^8, self^16]
         //  self^28 = self^16 * self^8 * self^4
-        let mut self_powered_by_target_factor;
-        let mut self_power_tracker;
-        if target_factor % 2 == 0 {
-            self_powered_by_target_factor = Scalar::from_i128(1);
-            self_power_tracker = 0;
+        let (mut self_powered_by_target_factor, mut self_power_tracker) = if target_factor % 2 == 0 {
+            (Scalar::from_i128(1), 0)
         } else {
-            self_powered_by_target_factor = self.clone();
-            self_power_tracker = 1;
-        }
+            (self.clone(), 1)
+        };
+        let mut available_power = 2usize.pow(powered_scalars.len() as u32);
         while self_power_tracker != target_factor {
-            let available_power = 2usize.pow(powered_scalars.len() as u32);
             if self_power_tracker + available_power <= target_factor {
                 self_power_tracker += available_power;
                 self_powered_by_target_factor =
                     self_powered_by_target_factor.mul(&powered_scalars[powered_scalars.len() - 1]);
             }
             powered_scalars.pop();
+            available_power = available_power / 2;
         }
 
         // We perform final computation
