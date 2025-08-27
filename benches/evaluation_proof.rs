@@ -26,8 +26,8 @@ fn generate_input_point(degree: u32) -> Scalar {
     Scalar::from(5).pow(degree as usize).add(&Scalar::from(20))
 }
 
-fn bench_evaluation_verification(c: &mut Criterion) {
-    let mut group = c.benchmark_group("evaluation_verification");
+fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
+    let mut group = c.benchmark_group("evaluation_proof");
     group
         .measurement_time(Duration::from_secs_f32(25.0))
         .sample_size(50);
@@ -38,24 +38,19 @@ fn bench_evaluation_verification(c: &mut Criterion) {
     for degree in degrees.iter() {
         // Fix input point
         let input_point = generate_input_point(*degree);
-        // Setup: Generate all required artifacts for each iteration
+
         let polynomial = generate_polynomial(*degree);
+        // Setup: Generate polynomial, setup artifacts, evaluation point and evaluation
         let setup_artifacts = generate_setup_artifacts(*degree);
-
-        // Generate commitment, evaluation, and proof
-        let commitment = polynomial.commit(&setup_artifacts).unwrap();
         let evaluation = polynomial.evaluate(input_point.clone()).unwrap();
-        let proof = evaluation
-            .generate_proof(&polynomial, &setup_artifacts)
-            .unwrap();
-
+        // Benchmark proof generation
         group.bench_with_input(
-            BenchmarkId::new("verify_proof", degree),
-            &(&evaluation, &proof, &commitment, &setup_artifacts),
-            |b, (eval, proof, commit, artifacts)| {
+            BenchmarkId::new("proof_generation", degree),
+            &(&polynomial, &evaluation, &setup_artifacts),
+            |b, (p, eval, artifacts)| {
                 b.iter(|| {
-                    // Benchmark: Verify proof
-                    let _is_valid = eval.verify_proof(proof, commit, artifacts).unwrap();
+                    // Benchmark: Generate proof only
+                    let _proof = eval.generate_proof(p, artifacts).unwrap();
                 });
             },
         );
@@ -64,5 +59,5 @@ fn bench_evaluation_verification(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_evaluation_verification);
+criterion_group!(benches, bench_polynomial_evaluation_and_proof);
 criterion_main!(benches);
