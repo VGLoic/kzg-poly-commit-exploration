@@ -28,7 +28,9 @@ fn generate_input_point(degree: u32) -> Scalar {
 
 fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluation_proof");
-    group.measurement_time(Duration::from_secs_f32(25.0)).sample_size(50);
+    group
+        .measurement_time(Duration::from_secs_f32(25.0))
+        .sample_size(50);
 
     // Test with different polynomial degrees
     let degrees = [1, 100, 500, 1_000, 2_500];

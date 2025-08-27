@@ -24,7 +24,9 @@ fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
 
 fn bench_polynomial_commitment(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial_commitment");
-    group.measurement_time(Duration::from_secs_f32(20.0)).sample_size(75);
+    group
+        .measurement_time(Duration::from_secs_f32(20.0))
+        .sample_size(75);
 
     // Test with different polynomial degrees as specified
     let degrees = [1, 100, 500, 1_000, 2_500];

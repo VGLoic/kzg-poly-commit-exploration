@@ -1,10 +1,7 @@
 use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use kzg_poly_commit_exploration::{
-    polynomial::Polynomial,
-    scalar::Scalar,
-};
+use kzg_poly_commit_exploration::{polynomial::Polynomial, scalar::Scalar};
 
 fn generate_polynomial(degree: u32) -> Polynomial {
     let coefficients: Vec<Scalar> = (0..(degree + 1))
@@ -19,7 +16,9 @@ fn generate_input_point(degree: u32) -> Scalar {
 
 fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial_evaluation_and_proof");
-    group.measurement_time(Duration::from_secs_f32(25.0)).sample_size(50);
+    group
+        .measurement_time(Duration::from_secs_f32(25.0))
+        .sample_size(50);
 
     // Test with different polynomial degrees
     let degrees = [1, 100, 500, 1_000, 2_500];
