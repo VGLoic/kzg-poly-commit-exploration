@@ -4,7 +4,6 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use kzg_poly_commit_exploration::{
     polynomial::Polynomial,
     scalar::Scalar,
-    trusted_setup::{SetupArtifact, SetupArtifactsGenerator},
 };
 
 fn generate_polynomial(degree: u32) -> Polynomial {
@@ -12,14 +11,6 @@ fn generate_polynomial(degree: u32) -> Polynomial {
         .map(|i| Scalar::from(5).pow(i as usize).add(&Scalar::from(10)))
         .collect();
     Polynomial::try_from(coefficients).unwrap()
-}
-
-fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
-    let mut s_bytes = [0; 32]; // Secret is a 256-bit scalar
-    s_bytes.copy_from_slice(&(0..32).collect::<Vec<u8>>());
-    SetupArtifactsGenerator::new(s_bytes)
-        .take((degree + 1) as usize)
-        .collect()
 }
 
 fn generate_input_point(degree: u32) -> Scalar {
@@ -46,21 +37,6 @@ fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
                 b.iter(|| {
                     // Benchmark: Evaluate polynomial
                     let _evaluation = p.evaluate(input.clone()).unwrap();
-                });
-            },
-        );
-
-        // Setup: Generate polynomial, setup artifacts, evaluation point, and evaluation for each iteration
-        let setup_artifacts = generate_setup_artifacts(*degree);
-        let evaluation = polynomial.evaluate(input_point.clone()).unwrap();
-        // Benchmark proof generation
-        group.bench_with_input(
-            BenchmarkId::new("proof_generation", degree),
-            &(&polynomial, &evaluation, &setup_artifacts),
-            |b, (p, eval, artifacts)| {
-                b.iter(|| {
-                    // Benchmark: Generate proof only
-                    let _proof = eval.generate_proof(p, artifacts).unwrap();
                 });
             },
         );

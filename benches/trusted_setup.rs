@@ -1,8 +1,11 @@
+use std::time::Duration;
+
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use kzg_poly_commit_exploration::trusted_setup::SetupArtifactsGenerator;
 
 fn bench_trusted_setup_generation(c: &mut Criterion) {
     let mut group = c.benchmark_group("trusted_setup_generation");
+    group.measurement_time(Duration::from_secs_f32(25.0)).sample_size(75);
 
     // Test with different polynomial degrees as specified
     let degrees = [1, 100, 500, 1_000, 2_500];

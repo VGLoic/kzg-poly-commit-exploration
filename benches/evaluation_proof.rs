@@ -22,24 +22,33 @@ fn generate_setup_artifacts(degree: u32) -> Vec<SetupArtifact> {
         .collect()
 }
 
-fn bench_polynomial_commitment(c: &mut Criterion) {
-    let mut group = c.benchmark_group("polynomial_commitment");
-    group.measurement_time(Duration::from_secs_f32(20.0)).sample_size(75);
+fn generate_input_point(degree: u32) -> Scalar {
+    Scalar::from(5).pow(degree as usize).add(&Scalar::from(20))
+}
 
-    // Test with different polynomial degrees as specified
+fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
+    let mut group = c.benchmark_group("evaluation_proof");
+    group.measurement_time(Duration::from_secs_f32(25.0)).sample_size(50);
+
+    // Test with different polynomial degrees
     let degrees = [1, 100, 500, 1_000, 2_500];
 
     for degree in degrees.iter() {
-        let polynomial = generate_polynomial(*degree);
-        let setup_artifacts = generate_setup_artifacts(*degree);
+        // Fix input point
+        let input_point = generate_input_point(*degree);
 
+        let polynomial = generate_polynomial(*degree);
+        // Setup: Generate polynomial, setup artifacts, evaluation point and evaluation
+        let setup_artifacts = generate_setup_artifacts(*degree);
+        let evaluation = polynomial.evaluate(input_point.clone()).unwrap();
+        // Benchmark proof generation
         group.bench_with_input(
-            BenchmarkId::new("commit", degree),
-            &(&polynomial, &setup_artifacts),
-            |b, (p, artifacts)| {
+            BenchmarkId::new("proof_generation", degree),
+            &(&polynomial, &evaluation, &setup_artifacts),
+            |b, (p, eval, artifacts)| {
                 b.iter(|| {
-                    // Benchmark: Commit to polynomial
-                    let _commitment = p.commit(artifacts).unwrap();
+                    // Benchmark: Generate proof only
+                    let _proof = eval.generate_proof(p, artifacts).unwrap();
                 });
             },
         );
@@ -48,5 +57,5 @@ fn bench_polynomial_commitment(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_polynomial_commitment);
+criterion_group!(benches, bench_polynomial_evaluation_and_proof);
 criterion_main!(benches);
