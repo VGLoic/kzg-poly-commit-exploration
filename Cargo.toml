@@ -36,5 +36,9 @@ name = "polynomial_evaluation"
 harness = false
 
 [[bench]]
+name = "evaluation_proof"
+harness = false
+
+[[bench]]
 name = "evaluation_verification"
 harness = false
