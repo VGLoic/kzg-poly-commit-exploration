@@ -14,8 +14,8 @@ fn generate_input_point(degree: u32) -> Scalar {
     Scalar::from(5).pow(degree as usize).add(&Scalar::from(20))
 }
 
-fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
-    let mut group = c.benchmark_group("polynomial_evaluation_and_proof");
+fn polynomial_evaluation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("polynomial_evaluation");
     group
         .measurement_time(Duration::from_secs_f32(25.0))
         .sample_size(50);
@@ -44,5 +44,5 @@ fn bench_polynomial_evaluation_and_proof(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_polynomial_evaluation_and_proof);
+criterion_group!(benches, polynomial_evaluation);
 criterion_main!(benches);
