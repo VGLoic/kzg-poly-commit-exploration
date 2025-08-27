@@ -144,7 +144,7 @@ impl Scalar {
         let mut current_power_of_two = 1;
         while current_power_of_two * 2 <= target_factor {
             let last_scalar: &Scalar = powered_scalars.last().unwrap_or(self);
-            powered_scalars.push(last_scalar.mul(&last_scalar));
+            powered_scalars.push(last_scalar.mul(last_scalar));
             current_power_of_two *= 2;
         }
 
@@ -184,7 +184,7 @@ impl Scalar {
             true => self_powered_by_target_factor.mul(&self_powered_by_target_factor),
             false => self_powered_by_target_factor
                 .mul(&self_powered_by_target_factor)
-                .mul(&self),
+                .mul(self),
         }
     }
 
@@ -406,7 +406,7 @@ mod tests {
     fn test_pow() {
         let a: i128 = (0..1_000_000).fake();
         let exponent: usize = (0..10).fake();
-        let a_powered = Scalar::from_i128(a).pow(exponent as usize);
+        let a_powered = Scalar::from_i128(a).pow(exponent);
         let expected_a_powered = BigUint::from(a as usize).pow(exponent as u32);
         let mut expected_le_bytes = [0u8; 32];
         for (i, b) in expected_a_powered.to_bytes_le().into_iter().enumerate() {
