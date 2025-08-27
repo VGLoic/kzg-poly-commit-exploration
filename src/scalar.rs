@@ -404,9 +404,9 @@ mod tests {
 
     #[test]
     fn test_pow() {
-        let a: i128 = (0..1_000_000).fake();
+        let a: u64 = (0..1_000_000).fake();
         let exponent: usize = (0..10).fake();
-        let a_powered = Scalar::from_i128(a).pow(exponent);
+        let a_powered = Scalar::from_i128(a as i128).pow(exponent);
         let expected_a_powered = BigUint::from(a as usize).pow(exponent as u32);
         let mut expected_le_bytes = [0u8; 32];
         for (i, b) in expected_a_powered.to_bytes_le().into_iter().enumerate() {
