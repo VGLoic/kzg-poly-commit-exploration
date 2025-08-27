@@ -155,7 +155,8 @@ impl Scalar {
         //  Target factor = 28
         //  Power of two decomposition: [self^2, self^4, self^8, self^16]
         //  self^28 = self^16 * self^8 * self^4
-        let (mut self_powered_by_target_factor, mut self_power_tracker) = if target_factor % 2 == 0 {
+        let (mut self_powered_by_target_factor, mut self_power_tracker) = if target_factor % 2 == 0
+        {
             (Scalar::from_i128(1), 0)
         } else {
             (self.clone(), 1)
