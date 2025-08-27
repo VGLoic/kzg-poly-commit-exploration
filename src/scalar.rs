@@ -169,7 +169,7 @@ impl Scalar {
                     self_powered_by_target_factor.mul(&powered_scalars[powered_scalars.len() - 1]);
             }
             powered_scalars.pop();
-            available_power = available_power / 2;
+            available_power /= 2;
         }
 
         // We perform final computation
