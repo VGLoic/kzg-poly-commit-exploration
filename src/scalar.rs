@@ -4,7 +4,7 @@ use serde::{
 };
 use std::fmt::Display;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Scalar(blst::blst_fr);
 
 const R_AS_HEX: &str = "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
@@ -120,13 +120,72 @@ impl Scalar {
     ///
     /// - `n` - Number of times to multiply self by itself
     pub fn pow(&self, n: usize) -> Self {
-        let mut out = Scalar::from_i128(1).0;
-        for _ in 0..n {
-            unsafe {
-                blst::blst_fr_mul(&mut out, &out, &self.0);
-            }
+        if n == 0 {
+            return Scalar::from_i128(1);
         }
-        Scalar(out)
+        if n == 1 {
+            return self.clone();
+        }
+
+        // We first target the closest scalar that we will use in the final result, i.e.
+        // if n is even: self^target_factor * self^target_factor
+        // if n is odd: self^target_factor * self^target_factor + self
+        //
+        // Example with 57:
+        //  Target factor = 28
+        let target_factor = n / 2;
+
+        // We begin by registering the power of two of `self` until we find the closest one of the target factor
+        //
+        // Example with 57:
+        //  Target factor = 28
+        //  Power of two decomposition: [self^2, self^4, self^8, self^16]
+        let mut powered_scalars: Vec<Scalar> = vec![];
+        let mut current_power_of_two = 1;
+        while current_power_of_two * 2 <= target_factor {
+            let last_scalar: &Scalar = powered_scalars.last().unwrap_or(self);
+            powered_scalars.push(last_scalar.mul(&last_scalar));
+            current_power_of_two *= 2;
+        }
+
+        // We now compute `self^target_factor` using the powers of 2
+        // Note that each registered power of 2, in descending order can only be used once
+        //
+        // Example with 57:
+        //  Target factor = 28
+        //  Power of two decomposition: [self^2, self^4, self^8, self^16]
+        //  self^28 = self^16 * self^8 * self^4
+        let mut self_powered_by_target_factor;
+        let mut self_power_tracker;
+        if target_factor % 2 == 0 {
+            self_powered_by_target_factor = Scalar::from_i128(1);
+            self_power_tracker = 0;
+        } else {
+            self_powered_by_target_factor = self.clone();
+            self_power_tracker = 1;
+        }
+        while self_power_tracker != target_factor {
+            let available_power = 2usize.pow(powered_scalars.len() as u32);
+            if self_power_tracker + available_power <= target_factor {
+                self_power_tracker += available_power;
+                self_powered_by_target_factor =
+                    self_powered_by_target_factor.mul(&powered_scalars[powered_scalars.len() - 1]);
+            }
+            powered_scalars.pop();
+        }
+
+        // We perform final computation
+        // if n is even: self^target_factor * self^target_factor
+        // if n is odd: self^target_factor * self^target_factor + self
+        //
+        // Example with 57:
+        //  self^57 = self^28 * self^28 * self
+        match target_factor * 2 == n {
+            true => self_powered_by_target_factor.mul(&self_powered_by_target_factor),
+            false => self_powered_by_target_factor
+                .mul(&self_powered_by_target_factor)
+                .mul(&self),
+        }
     }
 
     /// Returns a new scalar obtained by the addition of self and another scalar
@@ -341,5 +400,18 @@ mod tests {
         let from_big_uint = format!("{}", BigUint::from_bytes_le(&a));
         let from_scalar = format!("{}", Scalar::from_le_bytes(a));
         assert_eq!(from_big_uint, from_scalar);
+    }
+
+    #[test]
+    fn test_pow() {
+        let a: i128 = (0..1_000_000).fake();
+        let exponent: usize = (0..10).fake();
+        let a_powered = Scalar::from_i128(a).pow(exponent as usize);
+        let expected_a_powered = BigUint::from(a as usize).pow(exponent as u32);
+        let mut expected_le_bytes = [0u8; 32];
+        for (i, b) in expected_a_powered.to_bytes_le().into_iter().enumerate() {
+            expected_le_bytes[i] = b;
+        }
+        assert_eq!(a_powered.to_le_bytes().to_vec(), expected_le_bytes);
     }
 }
